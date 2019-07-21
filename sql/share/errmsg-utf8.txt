@@ -7861,7 +7861,7 @@ ER_VERS_PERIOD_COLUMNS
         eng "PERIOD FOR SYSTEM_TIME must use columns %`s and %`s"
 
 ER_PART_WRONG_VALUE
-        eng "Wrong parameters for partitioned %`s: wrong value for '%s'"
+        eng "Wrong parameters for partitioned %`s: wrong value for %s"
 
 ER_VERS_WRONG_PARTS
         eng "Wrong partitions for %`s: must have at least one HISTORY and exactly one last CURRENT"
@@ -7996,3 +7996,5 @@ ER_PARTITION_CONVERT_SUBPARTITIONED
         eng "Convert partition is not supported for subpartitioned table."
 ER_PROVIDER_NOT_LOADED
         eng "MariaDB tried to use the %s, but its provider plugin is not loaded"
+ER_VERS_HIST_PART_FAILED
+        eng "Versioned table %`s.%`s: adding HISTORY partition(s) failed"
