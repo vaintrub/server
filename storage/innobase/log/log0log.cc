@@ -1042,6 +1042,7 @@ loop:
 		log_mutex_exit();
 
 		innobase_mysql_log_notify(flush_lsn);
+                DBUG_EXECUTE_IF("crash_after_log_write_upto", DBUG_SUICIDE(););
 	}
 }
 

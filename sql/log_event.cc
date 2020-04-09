@@ -55,6 +55,7 @@
 #include "sql_digest.h"
 #include "zlib.h"
 #include "my_atomic.h"
+#include <algorithm>
 
 #define my_b_write_string(A, B) my_b_write((A), (uchar*)(B), (uint) (sizeof(B) - 1))
 
@@ -1448,7 +1449,7 @@ Log_event::do_shall_skip(rpl_group_info *rgi)
                       rli->replicate_same_server_id,
                       rli->slave_skip_counter));
   if ((server_id == global_system_variables.server_id &&
-       !rli->replicate_same_server_id) ||
+       !(rli->replicate_same_server_id || (flags &  LOG_EVENT_ACCEPT_OWN_F))) ||
       (rli->slave_skip_counter == 1 && rli->is_in_group()) ||
       (flags & LOG_EVENT_SKIP_REPLICATION_F &&
        opt_replicate_events_marked_for_skip != RPL_SKIP_REPLICATE))
@@ -7904,10 +7905,12 @@ bool Binlog_checkpoint_log_event::write()
 
 Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
                const Format_description_log_event *description_event)
-  : Log_event(buf, description_event), seq_no(0), commit_id(0)
+  : Log_event(buf, description_event), seq_no(0), commit_id(0),
+    flags_extra(0), extra_engines(0)
 {
   uint8 header_size= description_event->common_header_len;
   uint8 post_header_len= description_event->post_header_len[GTID_EVENT-1];
+  const char *buf_0= buf;
   if (event_len < (uint) header_size + (uint) post_header_len ||
       post_header_len < GTID_HEADER_LEN)
     return;
@@ -7917,7 +7920,7 @@ Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
   buf+= 8;
   domain_id= uint4korr(buf);
   buf+= 4;
-  flags2= *buf;
+  flags2= *buf++;
   if (flags2 & FL_GROUP_COMMIT_ID)
   {
     if (event_len < (uint)header_size + GTID_HEADER_LEN + 2)
@@ -7925,9 +7928,40 @@ Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
       seq_no= 0;                                // So is_valid() returns false
       return;
     }
-    ++buf;
     commit_id= uint8korr(buf);
+    buf+= 8;
   }
+
+  /* the extra flags check and actions */
+  if (static_cast<uint>(buf - buf_0) < event_len)
+  {
+    flags_extra= *buf++;
+    /*
+      extra engines flags presence is identifed by non-zero byte value
+      at this point
+    */
+    if (flags_extra & FL_EXTRA_MULTI_ENGINE)
+    {
+      DBUG_ASSERT(static_cast<uint>(buf - buf_0) < event_len);
+
+      extra_engines= *buf++;
+
+      DBUG_ASSERT(extra_engines > 0);
+    }
+  }
+  /*
+    the strict '<' part of the assert corresponds to extra zero-padded
+    trailing bytes,
+  */
+  DBUG_ASSERT(static_cast<uint>(buf - buf_0) <= event_len);
+  /* and the last of them is tested. */
+#ifdef MYSQL_SERVER
+#ifdef WITH_WSREP
+  if (!WSREP_ON)
+#endif
+#endif
+  DBUG_ASSERT(static_cast<uint>(buf - buf_0) == event_len ||
+              buf_0[event_len - 1] == 0);
 }
 
 
@@ -7936,10 +7970,13 @@ Gtid_log_event::Gtid_log_event(const char *buf, uint event_len,
 Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
                                uint32 domain_id_arg, bool standalone,
                                uint16 flags_arg, bool is_transactional,
-                               uint64 commit_id_arg)
+                               uint64 commit_id_arg, bool has_xid,
+                               bool ro_1pc)
   : Log_event(thd_arg, flags_arg, is_transactional),
     seq_no(seq_no_arg), commit_id(commit_id_arg), domain_id(domain_id_arg),
-    flags2((standalone ? FL_STANDALONE : 0) | (commit_id_arg ? FL_GROUP_COMMIT_ID : 0))
+    flags2((standalone ? FL_STANDALONE : 0) |
+           (commit_id_arg ? FL_GROUP_COMMIT_ID : 0)),
+    flags_extra(0), extra_engines(0)
 {
   cache_type= Log_event::EVENT_NO_CACHE;
   bool is_tmp_table= thd_arg->lex->stmt_accessed_temp_table();
@@ -7960,6 +7997,24 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
   /* Preserve any DDL or WAITED flag in the slave's binlog. */
   if (thd_arg->rgi_slave)
     flags2|= (thd_arg->rgi_slave->gtid_ev_flags2 & (FL_DDL|FL_WAITED));
+  if (is_transactional)
+  {
+    /* count non-zero extra recoverable engines; total = extra + 1 */
+    if (has_xid)
+    {
+      DBUG_ASSERT(ha_count_rw_2pc(thd_arg,
+                                  thd_arg->in_multi_stmt_transaction_mode()));
+
+      extra_engines=
+        ha_count_rw_2pc(thd_arg, thd_arg->in_multi_stmt_transaction_mode()) - 1;
+    }
+    else if (ro_1pc)
+    {
+      extra_engines= UCHAR_MAX;
+    }
+    if (extra_engines > 0)
+      flags_extra|= FL_EXTRA_MULTI_ENGINE;
+  }
 }
 
 
@@ -8002,22 +8057,37 @@ Gtid_log_event::peek(const char *event_start, size_t event_len,
 bool
 Gtid_log_event::write()
 {
-  uchar buf[GTID_HEADER_LEN+2];
-  size_t write_len;
+  uchar buf[GTID_HEADER_LEN+2 + /* flags_extra: */ 1+4];
+  size_t write_len= 13;
+
 
   int8store(buf, seq_no);
   int4store(buf+8, domain_id);
   buf[12]= flags2;
   if (flags2 & FL_GROUP_COMMIT_ID)
   {
-    int8store(buf+13, commit_id);
+    DBUG_ASSERT(write_len + 8 == GTID_HEADER_LEN + 2);
+
+    int8store(buf+write_len, commit_id);
     write_len= GTID_HEADER_LEN + 2;
   }
-  else
+  if (flags_extra > 0)
   {
-    bzero(buf+13, GTID_HEADER_LEN-13);
+    buf[write_len]= flags_extra;
+    write_len++;
+  }
+  if (flags_extra & FL_EXTRA_MULTI_ENGINE)
+  {
+    buf[write_len]= extra_engines;
+    write_len++;
+  }
+
+  if (write_len < GTID_HEADER_LEN)
+  {
+    bzero(buf+write_len, GTID_HEADER_LEN-write_len);
     write_len= GTID_HEADER_LEN;
   }
+
   return write_header(write_len) ||
          write_data(buf, write_len) ||
          write_footer();
