@@ -55,7 +55,8 @@ const char *item_empty_name="";
 const char *item_used_name= "\0";
 
 static int save_field_in_field(Field *, bool *, Field *, bool);
-
+const Item_bool_static Item_false("FALSE", 0);
+const Item_bool_static Item_true("TRUE", 1);
 
 /**
   Compare two Items for List<Item>::add_unique()
@@ -412,7 +413,6 @@ Item::Item(THD *thd):
   is_expensive_cache(-1), rsize(0), name(null_clex_str), orig_name(0),
   common_flags(IS_AUTO_GENERATED_NAME)
 {
-  DBUG_ASSERT(thd);
   marker= 0;
   maybe_null= null_value= with_window_func= with_field= false;
   in_rollup= 0;
@@ -436,6 +436,20 @@ Item::Item(THD *thd):
     if (place == SELECT_LIST || place == IN_HAVING)
       thd->lex->current_select->select_n_having_items++;
   }
+}
+
+/*
+  This is only used for static const items
+*/
+
+Item::Item():
+  is_expensive_cache(-1), name(null_clex_str), orig_name(0)
+{
+  marker= 0;
+  maybe_null= null_value= with_window_func= with_field= false;
+  in_rollup= 0;
+  with_param= 0;
+  join_tab_idx= MAX_TABLES;
 }
 
 
@@ -3625,6 +3639,7 @@ String *Item_int::val_str(String *str)
   str->set_int(value, unsigned_flag, collation.collation);
   return str;
 }
+
 
 void Item_int::print(String *str, enum_query_type query_type)
 {
