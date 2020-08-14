@@ -443,12 +443,12 @@ Item::Item(THD *thd):
 */
 
 Item::Item():
-  is_expensive_cache(-1), name(null_clex_str), orig_name(0)
+  name(null_clex_str), orig_name(0), is_expensive_cache(-1)
 {
+  common_flags= IS_AUTO_GENERATED_NAME;
   marker= 0;
-  maybe_null= null_value= with_window_func= with_field= false;
-  in_rollup= 0;
-  with_param= 0;
+  maybe_null= with_window_func= with_field= in_rollup= with_param= 0;
+  fixed= 1;
   join_tab_idx= MAX_TABLES;
 }
 
