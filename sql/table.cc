@@ -4839,7 +4839,7 @@ rename_file_ext(const char * from,const char * to,const char * ext)
 
 bool get_field(MEM_ROOT *mem, Field *field, String *res)
 {
-  char *to;
+  const char *to;
   StringBuffer<MAX_FIELD_WIDTH> str;
   bool rc;
   THD *thd= field->get_thd();
