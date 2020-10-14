@@ -2837,6 +2837,11 @@ public:
 
 #ifndef MYSQL_CLIENT
   binlog_cache_mngr *  binlog_setup_trx_data();
+  /*
+    If set, tell binlog to store the value as query 'xid' in the next
+    Query_log_event
+  */
+  ulonglong binlog_xid;
 
   /*
     Public interface to write RBR events to the binlog
