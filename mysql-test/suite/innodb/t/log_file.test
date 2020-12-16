@@ -79,6 +79,7 @@ eval $check_yes_innodb;
 --copy_file $bugdir/ibdata1 $bugdir/bak_ibdata1
 --copy_file $bugdir/ibdata2 $bugdir/bak_ibdata2
 --copy_file $bugdir/ib_logfile0 $bugdir/bak_ib_logfile0
+--copy_file $bugdir/ib_logdata $bugdir/bak_ib_logdata
 --copy_file $bugdir/undo001 $bugdir/bak_undo001
 --copy_file $bugdir/undo002 $bugdir/bak_undo002
 --copy_file $bugdir/undo003 $bugdir/bak_undo003
@@ -124,6 +125,7 @@ let SEARCH_PATTERN=InnoDB: undo tablespace .*undo001.* exists\. Creating system 
 --echo # 4. Without ibdata*, ib_logfile* and with undo00*
 --remove_files_wildcard $bugdir ibdata*
 --remove_files_wildcard $bugdir ib_logfile*
+--remove_files_wildcard $bugdir ib_logdata
 --list_files $bugdir
 --source include/start_mysqld.inc
 eval $check_no_innodb;
@@ -135,6 +137,7 @@ eval $check_no_innodb;
 --echo # 5. Without ibdata*,ib_logfile* files & Without undo002
 --remove_files_wildcard $bugdir ibdata*
 --remove_files_wildcard $bugdir ib_logfile*
+--remove_files_wildcard $bugdir ib_logdata
 --remove_file $bugdir/undo002
 --list_files $bugdir
 --source include/start_mysqld.inc
@@ -148,6 +151,7 @@ eval $check_no_innodb;
 # and with undo003
 --remove_files_wildcard $bugdir ibdata*
 --remove_files_wildcard $bugdir ib_logfile*
+--remove_files_wildcard $bugdir ib_logdata
 --remove_file $bugdir/undo001
 --remove_file $bugdir/undo002
 --list_files $bugdir
@@ -199,6 +203,7 @@ let SEARCH_PATTERN=redo log file .*ib_logfile0.* exists\. Creating system tables
 
 --echo # 10. With ibdata*, without ib_logfile0
 --remove_file $bugdir/ib_logfile0
+--remove_file $bugdir/ib_logdata
 
 --source include/start_mysqld.inc
 eval $check_no_innodb;

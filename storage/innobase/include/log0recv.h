@@ -279,6 +279,12 @@ public:
   /** Last added LSN to pages. */
   lsn_t last_stored_lsn= 0;
 
+  /** this block should be copied to LOG_DATA_FILE_NAME on upgrade from old
+  file format */
+  void set_block_to_copy(os_offset_t off);
+  /** upgrades file format if needed */
+  dberr_t upgrade_file_format_to_10_6_if_needed();
+
   void read(os_offset_t offset, span<byte> buf);
   inline size_t files_size();
   void close_files() { files.clear(); files.shrink_to_fit(); }
@@ -302,6 +308,11 @@ private:
   from before MariaDB Server 10.5.1) */
   std::vector<log_file_t> files;
 
+  /** Last checkpoint in empty pre-10.5 log files points to this block.
+  In old file format it's never 0, because old redo log file has a header. */
+  os_offset_t block_to_copy_when_upgrading_file_format= 0;
+
+  /** used for laziness */
   void open_log_files_if_needed();
 
   /** Base node of the redo block list.

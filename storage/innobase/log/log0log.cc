@@ -136,7 +136,7 @@ log_set_capacity(ulonglong file_size)
 	lsn_t		margin;
 	ulint		free;
 
-	lsn_t smallest_capacity = file_size - LOG_FILE_HDR_SIZE;
+	lsn_t smallest_capacity = file_size;
 	/* Add extra safety */
 	smallest_capacity -= smallest_capacity / 10;
 
@@ -440,11 +440,24 @@ dberr_t log_file_t::flush() noexcept
   return m_file->flush();
 }
 
-void log_t::file::open_file(std::string path)
+void log_t::file::open_files(std::string path)
 {
   fd= log_file_t(std::move(path));
   if (const dberr_t err= fd.open(srv_read_only_mode))
     ib::fatal() << "open(" << fd.get_path() << ") returned " << err;
+
+  data_fd= log_file_t(get_log_file_path(LOG_DATA_FILE_NAME));
+  bool exists;
+  os_file_type_t type;
+  os_file_status(data_fd.get_path().c_str(), &exists, &type);
+  if (exists)
+  {
+    if (const dberr_t err= data_fd.open(srv_read_only_mode))
+      ib::fatal() << "open(" << data_fd.get_path() << ") returned " << err;
+
+    srv_log_file_size=
+        os_file_get_size(data_fd.get_path().c_str()).m_total_size;
+  }
 }
 
 /** Update the log block checksum. */
@@ -474,23 +487,16 @@ void log_t::file::write_header_durable(lsn_t lsn)
 
   DBUG_PRINT("ib_log", ("write " LSN_PF, lsn));
 
-  log_sys.log.write(0, {buf, OS_FILE_LOG_BLOCK_SIZE});
-  if (!log_sys.log.writes_are_durable())
-    log_sys.log.flush();
+  log_sys.log.main_write_durable(0, {buf, OS_FILE_LOG_BLOCK_SIZE});
 }
 
-void log_t::file::read(os_offset_t offset, span<byte> buf)
+void log_t::file::main_read(os_offset_t offset, span<byte> buf)
 {
   if (const dberr_t err= fd.read(offset, buf))
-    ib::fatal() << "read(" << fd.get_path() << ") returned "<< err;
+    ib::fatal() << "read(" << fd.get_path() << ") returned " << err;
 }
 
-bool log_t::file::writes_are_durable() const noexcept
-{
-  return fd.writes_are_durable();
-}
-
-void log_t::file::write(os_offset_t offset, span<byte> buf)
+void log_t::file::main_write_durable(os_offset_t offset, span<byte> buf)
 {
   srv_stats.os_log_pending_writes.inc();
   if (const dberr_t err= fd.write(offset, buf))
@@ -499,25 +505,54 @@ void log_t::file::write(os_offset_t offset, span<byte> buf)
   srv_stats.os_log_written.add(buf.size());
   srv_stats.log_writes.inc();
   log_sys.n_log_ios++;
+
+  if (!fd.writes_are_durable())
+    if (const dberr_t err= fd.flush())
+      ib::fatal() << "flush(" << fd.get_path() << ") returned " << err;
 }
 
-void log_t::file::flush()
-{
-  log_sys.pending_flushes.fetch_add(1, std::memory_order_acquire);
-  if (const dberr_t err= fd.flush())
-    ib::fatal() << "flush(" << fd.get_path() << ") returned " << err;
-  log_sys.pending_flushes.fetch_sub(1, std::memory_order_release);
-  log_sys.flushes.fetch_add(1, std::memory_order_release);
-}
-
-void log_t::file::close_file()
+void log_t::file::close_files()
 {
   if (fd.is_opened())
-  {
     if (const dberr_t err= fd.close())
       ib::fatal() << "close(" << fd.get_path() << ") returned " << err;
-  }
-  fd.free();                                    // Free path
+  fd.free();
+
+  if (data_fd.is_opened())
+    if (const dberr_t err= data_fd.close())
+      ib::fatal() << "close(" << data_fd.get_path() << ") returned " << err;
+  data_fd.free();
+}
+
+void log_t::file::data_read(os_offset_t offset, span<byte> buf)
+{
+  if (const dberr_t err= data_fd.read(offset, buf))
+    ib::fatal() << "read(" << data_fd.get_path() << ") returned " << err;
+}
+
+bool log_t::file::data_writes_are_durable() const noexcept
+{
+  return data_fd.writes_are_durable();
+}
+
+void log_t::file::data_write(os_offset_t offset, span<byte> buf)
+{
+  srv_stats.os_log_pending_writes.inc();
+  if (const dberr_t err= data_fd.write(offset, buf))
+    ib::fatal() << "write(" << data_fd.get_path() << ") returned " << err;
+  srv_stats.os_log_pending_writes.dec();
+  srv_stats.os_log_written.add(buf.size());
+  srv_stats.log_writes.inc();
+  log_sys.n_log_ios++;
+}
+
+void log_t::file::/*data_*/flush()
+{
+  log_sys.pending_flushes.fetch_add(1, std::memory_order_acquire);
+  if (const dberr_t err= data_fd.flush())
+    ib::fatal() << "flush(" << data_fd.get_path() << ") returned " << err;
+  log_sys.pending_flushes.fetch_sub(1, std::memory_order_release);
+  log_sys.flushes.fetch_add(1, std::memory_order_release);
 }
 
 /** Initialize the redo log. */
@@ -530,7 +565,7 @@ void log_t::file::create()
   subformat= 2;
   file_size= srv_log_file_size;
   lsn= LOG_START_LSN;
-  lsn_offset= LOG_FILE_HDR_SIZE;
+  lsn_offset= 0;
 }
 
 /******************************************************//**
@@ -611,7 +646,7 @@ loop:
 
 	ut_a((next_offset >> srv_page_size_shift) <= ULINT_MAX);
 
-	log_sys.log.write(static_cast<size_t>(next_offset), {buf, write_len});
+	log_sys.log.data_write(next_offset, {buf, write_len});
 
 	if (write_len < len) {
 		start_lsn += write_len;
@@ -621,11 +656,10 @@ loop:
 	}
 }
 
-/** Flush the recently written changes to the log file.
-and invoke mysql_mutex_lock(&log_sys.mutex). */
+/** Flush the recently written changes to the log file */
 static void log_write_flush_to_disk_low(lsn_t lsn)
 {
-  if (!log_sys.log.writes_are_durable())
+  if (!log_sys.log.data_writes_are_durable())
     log_sys.log.flush();
   ut_a(lsn >= log_sys.get_flushed_lsn());
   log_sys.set_flushed_lsn(lsn);
@@ -762,7 +796,7 @@ static void log_write(bool rotate_key)
 		start_offset - area_start);
 	srv_stats.log_padded.add(pad_size);
 	log_sys.write_lsn = write_lsn;
-	if (log_sys.log.writes_are_durable()) {
+	if (log_sys.log.data_writes_are_durable()) {
 		log_sys.set_flushed_lsn(write_lsn);
 		log_flush_notify(write_lsn);
 	}
@@ -906,11 +940,10 @@ ATTRIBUTE_COLD void log_write_checkpoint_info(lsn_t end_lsn)
 	/* Note: We alternate the physical place of the checkpoint info.
 	See the (next_checkpoint_no & 1) below. */
 
-	log_sys.log.write((log_sys.next_checkpoint_no & 1) ? LOG_CHECKPOINT_2
-							   : LOG_CHECKPOINT_1,
-			  {buf, OS_FILE_LOG_BLOCK_SIZE});
-
-	log_sys.log.flush();
+	log_sys.log.main_write_durable((log_sys.next_checkpoint_no & 1)
+					       ? LOG_CHECKPOINT_2
+					       : LOG_CHECKPOINT_1,
+				       {buf, OS_FILE_LOG_BLOCK_SIZE});
 
 	mysql_mutex_lock(&log_sys.mutex);
 
@@ -1332,4 +1365,47 @@ std::vector<std::string> get_existing_log_files_paths() {
   }
 
   return result;
+}
+
+dberr_t create_data_file(os_offset_t size)
+{
+  ut_ad(size > LOG_MAIN_FILE_SIZE);
+
+  const auto path= get_log_file_path(LOG_DATA_FILE_NAME);
+  os_file_delete_if_exists(innodb_log_file_key, path.c_str(), nullptr);
+
+  bool ret;
+  pfs_os_file_t file=
+      os_file_create(innodb_log_file_key, path.c_str(),
+                     OS_FILE_CREATE | OS_FILE_ON_ERROR_NO_EXIT, OS_FILE_NORMAL,
+                     OS_LOG_FILE, srv_read_only_mode, &ret);
+
+  if (!ret)
+  {
+    ib::error() << "Cannot create " << path;
+    return DB_ERROR;
+  }
+
+  ib::info() << "Setting log file " << path << " size to " << size << " bytes";
+
+  ret= os_file_set_size(path.c_str(), file, size);
+  if (!ret)
+  {
+    os_file_close(file);
+    ib::error() << "Cannot set log file " << path << " size to " << size
+                << " bytes";
+    return DB_ERROR;
+  }
+
+  if (!os_file_flush(file))
+  {
+    os_file_close(file);
+    ib::error() << "Error while flushing " << path;
+    return DB_ERROR;
+  }
+
+  ret= os_file_close(file);
+  ut_a(ret);
+
+  return DB_SUCCESS;
 }

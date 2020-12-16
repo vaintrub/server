@@ -172,6 +172,7 @@ SELECT * FROM tp;
 a
 DROP TABLE tr,tc,td,tz,tp;
 # restart
+ib_logdata
 ib_logfile0
 ibdata1
 sys_tables.bin

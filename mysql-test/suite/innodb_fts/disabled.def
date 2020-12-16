@@ -1,2 +1,3 @@
 crash_recovery : MDEV-14425 breaks recovery
 sync : MDEV-14425 breaks recovery
+innodb-fts-ddl : MDEV-14425 breaks recovery

@@ -73,8 +73,11 @@ INSERT INTO t0 VALUES(NULL, 5, 5, 'public', 'gossip');
 -- let SEARCH_FILE=$MYSQLD_DATADIR/ib_logfile0
 -- source include/search_pattern_in_file.inc
 --let SEARCH_PATTERN=(public|gossip).*
---echo # ib_logfile0 expecting FOUND
+--echo # ib_logfile0 expecting NOT FOUND
 -- let SEARCH_FILE=$MYSQLD_DATADIR/ib_logfile0
+-- source include/search_pattern_in_file.inc
+--echo # ib_logdata expecting FOUND
+-- let SEARCH_FILE=$MYSQLD_DATADIR/ib_logdata
 -- source include/search_pattern_in_file.inc
 
 --let SEARCH_PATTERN=private|secret|sacr(ed|ament)|success|story|secur(e|ity)|public|gossip

@@ -46,8 +46,10 @@ INSERT INTO t0 VALUES(NULL, 5, 5, 'public', 'gossip');
 # Kill the server
 # ib_logfile0 expecting NOT FOUND
 NOT FOUND /private|secret|sacr(ed|ament)|success|story|secur(e|ity)/ in ib_logfile0
-# ib_logfile0 expecting FOUND
-FOUND 1 /(public|gossip).*/ in ib_logfile0
+# ib_logfile0 expecting NOT FOUND
+NOT FOUND /(public|gossip).*/ in ib_logfile0
+# ib_logdata expecting FOUND
+FOUND 1 /(public|gossip).*/ in ib_logdata
 # ibdata1 expecting NOT FOUND
 NOT FOUND /private|secret|sacr(ed|ament)|success|story|secur(e|ity)|public|gossip/ in ibdata1
 # t0.ibd expecting NOT FOUND

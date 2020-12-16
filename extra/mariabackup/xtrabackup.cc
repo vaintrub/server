@@ -4295,9 +4295,9 @@ static bool xtrabackup_backup_low()
 		if (recv_find_max_checkpoint(&max_cp_field) == DB_SUCCESS
 		    && log_sys.log.format != 0) {
 			if (max_cp_field == LOG_CHECKPOINT_1) {
-				log_sys.log.read(max_cp_field,
-						 {log_sys.checkpoint_buf,
-						  OS_FILE_LOG_BLOCK_SIZE});
+				log_sys.log.data_read(max_cp_field,
+						      {log_sys.checkpoint_buf,
+						       OS_FILE_LOG_BLOCK_SIZE});
 			}
 			metadata_to_lsn = mach_read_from_8(
 				log_sys.checkpoint_buf + LOG_CHECKPOINT_LSN);
@@ -4461,7 +4461,7 @@ fail:
 
 	log_sys.create();
 	log_sys.log.create();
-	log_sys.log.open_file(get_log_file_path());
+	log_sys.log.open_files(get_log_file_path());
 
 	/* create extra LSN dir if it does not exist. */
 	if (xtrabackup_extra_lsndir
@@ -4519,7 +4519,7 @@ free_and_fail:
 	checkpoint_lsn_start = log_sys.log.get_lsn();
 	checkpoint_no_start = log_sys.next_checkpoint_no;
 
-	log_sys.log.read(max_cp_field, {buf, OS_FILE_LOG_BLOCK_SIZE});
+	log_sys.log.main_read(max_cp_field, {buf, OS_FILE_LOG_BLOCK_SIZE});
 
 	if (checkpoint_no_start != mach_read_from_8(buf + LOG_CHECKPOINT_NO)
 	    || checkpoint_lsn_start
@@ -4536,10 +4536,19 @@ free_and_fail:
 		goto free_and_fail;
 	}
 
-	/* open the log file */
+	/* open the log data file */
 	memset(&stat_info, 0, sizeof(MY_STAT));
-	dst_log_file = ds_open(ds_redo, LOG_FILE_NAME, &stat_info);
+	dst_log_file = ds_open(ds_redo, LOG_DATA_FILE_NAME, &stat_info);
 	if (dst_log_file == NULL) {
+		msg("Error: failed to open the target stream for '%s'.",
+		    LOG_DATA_FILE_NAME);
+		goto fail;
+	}
+
+	memset(&stat_info, 0, sizeof(MY_STAT));
+	ds_file_t *dst_log_main_file=
+		ds_open(ds_redo, LOG_FILE_NAME, &stat_info);
+	if (dst_log_main_file == nullptr) {
 		msg("Error: failed to open the target stream for '%s'.",
 		    LOG_FILE_NAME);
 		goto free_and_fail;
@@ -4547,8 +4556,8 @@ free_and_fail:
 
 	/* label it */
 	byte* log_hdr_buf = static_cast<byte*>(
-		aligned_malloc(LOG_FILE_HDR_SIZE, OS_FILE_LOG_BLOCK_SIZE));
-	memset(log_hdr_buf, 0, LOG_FILE_HDR_SIZE);
+		aligned_malloc(LOG_MAIN_FILE_SIZE, LOG_MAIN_FILE_SIZE));
+	memset(log_hdr_buf, 0, LOG_MAIN_FILE_SIZE);
 
 	byte *log_hdr_field = log_hdr_buf;
 	mach_write_to_4(LOG_HEADER_FORMAT + log_hdr_field, log_sys.log.format);
@@ -4571,19 +4580,24 @@ free_and_fail:
 	/* Adjust the checkpoint page. */
 	memcpy(log_hdr_field, log_sys.checkpoint_buf, OS_FILE_LOG_BLOCK_SIZE);
 	mach_write_to_8(log_hdr_field + LOG_CHECKPOINT_OFFSET,
-		(checkpoint_lsn_start & (OS_FILE_LOG_BLOCK_SIZE - 1))
-		| LOG_FILE_HDR_SIZE);
+		(checkpoint_lsn_start & (OS_FILE_LOG_BLOCK_SIZE - 1)));
 	log_block_set_checksum(log_hdr_field,
 			log_block_calc_checksum_crc32(log_hdr_field));
 
 	/* Write log header*/
-	if (ds_write(dst_log_file, log_hdr_buf, LOG_FILE_HDR_SIZE)) {
+	if (ds_write(dst_log_file, log_hdr_buf, LOG_MAIN_FILE_SIZE)) {
 		msg("error: write to logfile failed");
 		aligned_free(log_hdr_buf);
 		goto free_and_fail;
 	}
 
 	aligned_free(log_hdr_buf);
+
+	if (int err = ds_close(dst_log_main_file)) {
+		msg("error while closing %s: %d", LOG_FILE_NAME, err);
+	}
+	dst_log_main_file = nullptr;
+
 	log_copying_running = true;
 	/* start io throttle */
 	if(xtrabackup_throttle) {

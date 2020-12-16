@@ -18009,7 +18009,6 @@ checkpoint_now_set(THD*, st_mysql_sys_var*, void*, const void* save)
 			       std::memory_order_acquire)
 		       < (lsn= log_sys.get_lsn(std::memory_order_acquire))) {
 			log_make_checkpoint();
-			log_sys.log.flush();
 		}
 
 		if (dberr_t err = fil_write_flushed_lsn(lsn)) {
