@@ -218,6 +218,7 @@ void log_t::create()
   buf_free= LOG_BLOCK_HDR_SIZE;
   checkpoint_buf= static_cast<byte*>
     (aligned_malloc(OS_FILE_LOG_BLOCK_SIZE, OS_FILE_LOG_BLOCK_SIZE));
+  log.create();
 }
 
 mapped_file_t::~mapped_file_t() noexcept
@@ -566,6 +567,19 @@ void log_t::file::create()
   file_size= srv_log_file_size;
   lsn= LOG_START_LSN;
   lsn_offset= 0;
+
+  mysql_mutex_init(log_sys_file_mutex_key, &fd_mutex, nullptr);
+  fd_offset= 0;
+}
+
+dberr_t log_t::file::append(span<const byte> buf) noexcept
+{
+  mysql_mutex_lock(&fd_mutex);
+  dberr_t err= fd.write(fd_offset, buf);
+  if (err == DB_SUCCESS)
+    fd_offset+= buf.size();
+  mysql_mutex_unlock(&fd_mutex);
+  return err;
 }
 
 /******************************************************//**

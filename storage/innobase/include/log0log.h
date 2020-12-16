@@ -513,10 +513,14 @@ public:
     lsn_t				lsn;
     /** the byte offset of the above lsn */
     lsn_t				lsn_offset;
-    /** main log file */
-    log_file_t				fd;
     /** log data file */
     log_file_t				data_fd;
+    /** mutex protecting appending to fd */
+    MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE) mysql_mutex_t fd_mutex;
+    /** write position of fd */
+    os_offset_t fd_offset;
+    /** main log file */
+    log_file_t fd;
 
   public:
     /** used only in recovery: recovery scan succeeded up to this
@@ -581,11 +585,13 @@ public:
     void create();
 
     /** Close the redo log buffer. */
-    void close() { close_files(); }
+    void close() { close_files(); mysql_mutex_destroy(&fd_mutex); }
     void set_lsn(lsn_t a_lsn);
     lsn_t get_lsn() const { return lsn; }
     void set_lsn_offset(lsn_t a_lsn);
     lsn_t get_lsn_offset() const { return lsn_offset; }
+
+    dberr_t append(span<const byte> buf) noexcept;
   } log;
 
 	/** The fields involved in the log buffer flush @{ */
@@ -712,6 +718,9 @@ public:
   {
     return flushes.load(std::memory_order_relaxed);
   }
+
+  /** Append to the log */
+  dberr_t append(span<const byte> buf) noexcept { return log.append(buf); }
 
   /** Initialise the redo log subsystem. */
   void create();

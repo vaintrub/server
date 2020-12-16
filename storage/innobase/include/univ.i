@@ -548,6 +548,7 @@ extern mysql_pfs_key_t fts_pll_tokenize_mutex_key;
 extern mysql_pfs_key_t ibuf_bitmap_mutex_key;
 extern mysql_pfs_key_t ibuf_mutex_key;
 extern mysql_pfs_key_t ibuf_pessimistic_insert_mutex_key;
+extern mysql_pfs_key_t log_sys_file_mutex_key;
 extern mysql_pfs_key_t log_sys_mutex_key;
 extern mysql_pfs_key_t log_cmdq_mutex_key;
 extern mysql_pfs_key_t log_flush_order_mutex_key;
