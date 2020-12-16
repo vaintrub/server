@@ -1866,7 +1866,6 @@ fil_crypt_rotate_page(
 		ut_ad(!mtr.has_modifications());
 		ut_ad(!mtr.is_dirty());
 		ut_ad(mtr.get_memo()->size() == 0);
-		ut_ad(mtr.get_log()->size() == 0);
 		mtr.commit();
 	}
 

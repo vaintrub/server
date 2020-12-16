@@ -1402,8 +1402,8 @@ fil_space_t *fil_space_t::get(uint32_t id)
 @param first_page_no  first page number in the file
 @param path           file path
 @param new_path       new file path for type=FILE_RENAME */
-inline void mtr_t::log_file_op(mfile_type_t type, uint32_t space_id,
-			       const char *path, const char *new_path)
+static void file_op(mfile_type_t type, uint32_t space_id,
+                    const char *path, const char *new_path= nullptr)
 {
   ut_ad((new_path != nullptr) == (type == FILE_RENAME));
   ut_ad(!(byte(type) & 15));
@@ -1413,18 +1413,18 @@ inline void mtr_t::log_file_op(mfile_type_t type, uint32_t space_id,
   ut_ad(strchr(path, '/'));
   ut_ad(!strcmp(&path[strlen(path) - strlen(DOT_IBD)], DOT_IBD));
 
-  if (m_log_mode != MTR_LOG_ALL)
-    return;
-  m_last= nullptr;
-
   const size_t len= strlen(path);
   const size_t new_len= type == FILE_RENAME ? 1 + strlen(new_path) : 0;
   ut_ad(len > 0);
-  byte *const log_ptr= m_log.open(1 + 3/*length*/ + 5/*space_id*/ +
-                                  1/*page_no=0*/);
+  const size_t size= 1 + 3/*length*/ + 5/*space_id*/ + 4/*CRC-32C*/ +
+    len + new_len;
+
+  byte *log_ptr= static_cast<byte*>(ut_malloc_nokey(size));
+  if (UNIV_UNLIKELY(!log_ptr))
+    return;
+
   byte *end= log_ptr + 1;
   end= mlog_encode_varint(end, space_id);
-  *end++= 0;
   if (UNIV_LIKELY(end + len + new_len >= &log_ptr[16]))
   {
     *log_ptr= type;
@@ -1435,7 +1435,6 @@ inline void mtr_t::log_file_op(mfile_type_t type, uint32_t space_id,
       total_len++;
     end= mlog_encode_varint(log_ptr + 1, total_len);
     end= mlog_encode_varint(end, space_id);
-    *end++= 0;
   }
   else
   {
@@ -1443,42 +1442,22 @@ inline void mtr_t::log_file_op(mfile_type_t type, uint32_t space_id,
     ut_ad(*log_ptr & 15);
   }
 
-  m_log.close(end);
-
-  if (type == FILE_RENAME)
+  memcpy(end, path, len);
+  end+= len;
+  if (new_path)
   {
-    ut_ad(strchr(new_path, '/'));
-    m_log.push(reinterpret_cast<const byte*>(path), uint32_t(len + 1));
-    m_log.push(reinterpret_cast<const byte*>(new_path), uint32_t(new_len));
+    *end++= 0;
+    memcpy(end, path, new_len);
+    end+= new_len;
   }
-  else
-    m_log.push(reinterpret_cast<const byte*>(path), uint32_t(len));
-}
 
-/** Write redo log for renaming a file.
-@param[in]	space_id	tablespace id
-@param[in]	old_name	tablespace file name
-@param[in]	new_name	tablespace file name after renaming
-@param[in,out]	mtr		mini-transaction */
-static void fil_name_write_rename_low(uint32_t space_id, const char *old_name,
-                                      const char *new_name, mtr_t *mtr)
-{
-  ut_ad(!is_predefined_tablespace(space_id));
-  mtr->log_file_op(FILE_RENAME, space_id, old_name, new_name);
-}
-
-/** Write redo log for renaming a file.
-@param[in]	space_id	tablespace id
-@param[in]	old_name	tablespace file name
-@param[in]	new_name	tablespace file name after renaming */
-static void fil_name_write_rename(uint32_t space_id,
-				  const char *old_name, const char* new_name)
-{
-  mtr_t mtr;
-  mtr.start();
-  fil_name_write_rename_low(space_id, old_name, new_name, &mtr);
-  mtr.commit();
-  log_write_up_to(mtr.commit_lsn(), true);
+  mach_write_to_4(end, ut_crc32(log_ptr, end - log_ptr));
+  end+= 4;
+  ut_ad(end <= &log_ptr[size]);
+#if 0 /* FIXME: implement this! */
+  write(ib_logfile0, log_ptr, end - log_ptr);
+#endif
+  ut_free(log_ptr);
 }
 
 fil_space_t *fil_space_t::check_pending_operations(uint32_t id)
@@ -1593,11 +1572,7 @@ pfs_os_file_t fil_delete_tablespace(uint32_t id)
   if (fil_space_t *space= fil_space_t::check_pending_operations(id))
   {
     /* Before deleting the file(s), persistently write a log record. */
-    mtr_t mtr;
-    mtr.start();
-    mtr.log_file_op(FILE_DELETE, id, space->chain.start->name);
-    mtr.commit();
-    log_write_up_to(mtr.commit_lsn(), true);
+    file_op(FILE_DELETE, id, space->chain.start->name);
 
     /* Remove any additional files. */
     if (char *cfg_name= fil_make_filepath(space->chain.start->name,
@@ -1745,7 +1720,7 @@ char *fil_make_filepath(const char* path, const table_name_t name,
 dberr_t fil_space_t::rename(const char *path, bool log, bool replace)
 {
   ut_ad(UT_LIST_GET_LEN(chain) == 1);
-  ut_ad(!is_system_tablespace(id));
+  ut_ad(!is_predefined_tablespace(id));
 
   const char *old_path= chain.start->name;
 
@@ -1773,7 +1748,7 @@ dberr_t fil_space_t::rename(const char *path, bool log, bool replace)
       return DB_TABLESPACE_EXISTS;
     }
 
-    fil_name_write_rename(id, old_path, path);
+    file_op(FILE_RENAME, id, old_path, path);
   }
 
   return fil_rename_tablespace(id, old_path, path) ? DB_SUCCESS : DB_ERROR;
@@ -1791,7 +1766,8 @@ static bool fil_rename_tablespace(uint32_t id, const char *old_path,
 {
 	fil_space_t*	space;
 	fil_node_t*	node;
-	ut_a(id != 0);
+
+	ut_ad(!is_predefined_tablespace(id));
 
 	mysql_mutex_lock(&fil_system.mutex);
 
@@ -1883,7 +1859,6 @@ fil_ibd_create(
 {
 	pfs_os_file_t	file;
 	bool		success;
-	mtr_t		mtr;
 	bool		has_data_dir = FSP_FLAGS_HAS_DATA_DIR(flags) != 0;
 
 	ut_ad(!is_system_tablespace(space_id));
@@ -1899,10 +1874,7 @@ fil_ibd_create(
 		return NULL;
 	}
 
-	mtr.start();
-	mtr.log_file_op(FILE_CREATE, space_id, path);
-	mtr.commit();
-	log_write_up_to(mtr.commit_lsn(), true);
+	file_op(FILE_CREATE, space_id, path);
 
 	ulint type;
 	static_assert(((UNIV_ZIP_SIZE_MIN >> 1) << 3) == 4096,
@@ -1996,6 +1968,7 @@ err_exit:
 						     crypt_data, mode)) {
 		fil_node_t* node = space->add(path, file, size, false, true);
 		IF_WIN(node->find_metadata(), node->find_metadata(file, true));
+		mtr_t mtr;
 		mtr.start();
 		fsp_header_init(space, size, &mtr);
 		mtr.commit();

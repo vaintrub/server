@@ -1123,7 +1123,7 @@ mtr_t::print() const
 {
 	ib::info() << "Mini-transaction handle: memo size "
 		<< m_memo.size() << " bytes log size "
-		<< get_log()->size() << " bytes";
+		<< m_log.size() << " bytes";
 }
 
 #endif /* UNIV_DEBUG */

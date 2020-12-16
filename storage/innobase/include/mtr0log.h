@@ -384,8 +384,8 @@ template<byte type>
 inline byte *mtr_t::log_write(const page_id_t id, const buf_page_t *bpage,
                               size_t len, bool alloc, size_t offset)
 {
-  static_assert(!(type & 15) && type != RESERVED && type != OPTION &&
-                type <= FILE_CHECKPOINT, "invalid type");
+  static_assert(!(type & 0x8f) && type != RESERVED && type != OPTION,
+                "invalid type");
   ut_ad(!bpage || bpage->id() == id);
   constexpr bool have_len= type != INIT_PAGE && type != FREE_PAGE;
   constexpr bool have_offset= type == WRITE || type == MEMSET ||

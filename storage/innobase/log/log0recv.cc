@@ -532,7 +532,7 @@ inline size_t log_phys_t::alloc_size(size_t len)
 
 /** Tablespace item during recovery */
 struct file_name_t {
-	/** Tablespace file name (FILE_MODIFY) */
+	/** Tablespace file name (FILE_ID) */
 	std::string	name;
 	/** Tablespace object (NULL if not valid or not found) */
 	fil_space_t*	space = nullptr;
@@ -1172,7 +1172,7 @@ fil_name_process(char* name, ulint len, uint32_t space_id,
 	      || srv_operation == SRV_OPERATION_RESTORE_EXPORT);
 
 	/* We will also insert space=NULL into the map, so that
-	further checks can ensure that a FILE_MODIFY record was
+	further checks can ensure that a FILE_ID record was
 	scanned before applying any page records for the space_id. */
 
 	const file_name_t fname(std::string(name, len), deleted);
@@ -1198,7 +1198,7 @@ fil_name_process(char* name, ulint len, uint32_t space_id,
 		}
 
 		ut_ad(f.space == NULL);
-	} else if (p.second // the first FILE_MODIFY or FILE_RENAME
+	} else if (p.second // the first FILE_ID or FILE_RENAME
 		   || f.name != fname.name) {
 		fil_space_t*	space;
 
@@ -2143,7 +2143,7 @@ static void store_freed_or_init_rec(page_id_t page_id, bool freed)
   switch (b & 0xf0) {
 # if 1 /* MDEV-14425 FIXME: Remove this! */
   case FILE_CHECKPOINT:
-    if (space_id == 0 && page_no == 0 && rlen == 8)
+    if (rlen == 8 + 6)
     {
       const lsn_t lsn= mach_read_from_8(l);
 
@@ -2180,9 +2180,11 @@ static void store_freed_or_init_rec(page_id_t page_id, bool freed)
     ib::warn() << "Ignoring malformed log record at LSN " << recovered_lsn;
     continue;
   case FILE_DELETE:
-  case FILE_MODIFY:
+  case FILE_ID:
   case FILE_RENAME:
-    if (UNIV_UNLIKELY(page_no != 0))
+  case FILE_CREATE:
+    if (UNIV_UNLIKELY(is_predefined_tablespace(space_id)))
+      goto file_rec_error;
     {
     file_rec_error:
       if (!srv_force_recovery)
@@ -2196,10 +2198,6 @@ static void store_freed_or_init_rec(page_id_t page_id, bool freed)
                  << recovered_lsn;
       continue;
     }
-    /* fall through */
-  case FILE_CREATE:
-    if (UNIV_UNLIKELY(space_id == 0))
-      goto file_rec_error;
     /* There is no terminating NUL character. Names must end in .ibd.
     For FILE_RENAME, there is a NUL between the two file names. */
     const char * const fn= reinterpret_cast<const char*>(l);
@@ -2220,26 +2218,6 @@ static void store_freed_or_init_rec(page_id_t page_id, bool freed)
         goto file_rec_error;
     }
 
-    if (page_no)
-    {
-      if (UNIV_UNLIKELY((b & 0xf0) != FILE_CREATE))
-        goto file_rec_error;
-      /* truncating an undo log tablespace */
-      ut_ad(fnend - fn >= 7);
-      ut_ad(!memcmp(fnend - 7, "undo", 4));
-      ut_d(char n[4]; char *end; memcpy(n, fnend - 3, 3); n[3]= 0);
-      ut_ad(strtoul(n, &end, 10) <= 127);
-      ut_ad(end == &n[3]);
-      ut_ad(page_no == SRV_UNDO_TABLESPACE_SIZE_IN_PAGES);
-      ut_ad(srv_is_undo_tablespace(space_id));
-      static_assert(UT_ARR_SIZE(truncated_undo_spaces) ==
-                    TRX_SYS_MAX_UNDO_SPACES, "compatibility");
-      truncated_undo_spaces[space_id - srv_undo_space_id_start]=
-        { recovered_lsn, page_no };
-      continue;
-    }
-    if (is_predefined_tablespace(space_id))
-      goto file_rec_error;
     if (fnend - fn < 4 || memcmp(fnend - 4, DOT_IBD, 4))
       goto file_rec_error;
 
@@ -2250,7 +2228,7 @@ static void store_freed_or_init_rec(page_id_t page_id, bool freed)
     if (fn2)
       fil_name_process(const_cast<char*>(fn2), fn2end - fn2, space_id,
                        false);
-    if ((b & 0xf0) < FILE_MODIFY && log_file_op)
+    if ((b & 0xf0) < FILE_ID && log_file_op)
       log_file_op(space_id, (b & 0xf0) == FILE_CREATE,
                   l, static_cast<ulint>(fnend - fn),
                   reinterpret_cast<const byte*>(fn2),
@@ -3868,9 +3846,7 @@ recv_init_crash_recovery_spaces(bool rescan, bool& missing_tablespace)
 					std::move(rs.second.freed_ranges));
 			}
 		} else if (rs.second.name == "") {
-			ib::error() << "Missing FILE_CREATE, FILE_DELETE"
-				" or FILE_MODIFY before FILE_CHECKPOINT"
-				" for tablespace " << rs.first;
+			ib::error() << "Unknown tablespace " << rs.first;
 			recv_sys.set_corrupt_log();
 			return(DB_CORRUPTION);
 		} else {

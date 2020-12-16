@@ -288,8 +288,10 @@ enum mrec_ext_t
 
 
 /** Redo log record types for file-level operations. These bit
-patterns will be written to redo log files, so the existing codes or
-their interpretation on crash recovery must not be changed. */
+patterns will be written to the append-only ib_logfile0 file,
+followed by CRC-32C of the record contents.
+Changing these codes or their interpretation on crash recovery
+may break compatibility! */
 enum mfile_type_t
 {
   /** Create a file. Followed by tablespace ID and the file name. */
@@ -299,19 +301,13 @@ enum mfile_type_t
   /** Rename a file. Followed by tablespace ID and the old file name,
   NUL, and the new file name.  */
   FILE_RENAME = 0xa0,
-  /** Modify a file. Followed by tablespace ID and the file name. */
-  FILE_MODIFY = 0xb0,
-#if 1 /* MDEV-14425 FIXME: Remove this! */
-  /** End-of-checkpoint marker. Followed by 2 dummy bytes of page identifier,
-  8 bytes of LSN, and padded with a NUL; @see SIZE_OF_CHECKPOINT. */
+  /** Identify a file that already existed when ib_logfile0 was created.
+  Followed by tablespace ID and the file name. */
+  FILE_ID = 0xb0,
+  /** Checkpoint identifier. Followed by 8 bytes of LSN and 6 bytes
+  of ib_logdata byte offset. */
   FILE_CHECKPOINT = 0xf0
-#endif
 };
-
-#if 1 /* MDEV-14425 FIXME: Remove this! */
-/** Size of a FILE_CHECKPOINT record, including the checksum. */
-constexpr byte SIZE_OF_CHECKPOINT= 3/*type,page_id*/ + 8/*LSN*/ + 4;
-#endif
 
 #ifndef UNIV_INNOCHECKSUM
 /** Types for the mlock objects to store in the mtr_t::m_memo */
