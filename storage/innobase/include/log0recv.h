@@ -247,9 +247,6 @@ public:
 	lsn_t		recovered_lsn;
 				/*!< the log records have been parsed up to
 				this lsn */
-	lsn_t		mlog_checkpoint_lsn;
-				/*!< the LSN of a FILE_CHECKPOINT
-				record, or 0 if none was parsed */
 	/** the time when progress was last reported */
 	time_t		progress_time;
 
@@ -347,10 +344,8 @@ public:
   /** Parse and register one mini-transaction in log_t::FORMAT_10_5.
   @param checkpoint_lsn  the log sequence number of the latest checkpoint
   @param store           whether to store the records
-  @param apply           whether to apply file-level log records
-  @return whether FILE_CHECKPOINT record was seen the first time,
-  or corruption was noticed */
-  bool parse(lsn_t checkpoint_lsn, store_t *store, bool apply);
+  @return whether corruption was noticed */
+  bool parse(lsn_t checkpoint_lsn, store_t *store);
 
   /** Clear a fully processed set of stored redo log records. */
   inline void clear();

@@ -39,6 +39,7 @@ innodb_force_recovery_rollback : MDEV-14425 breaks recovery
 instant_alter_crash : MDEV-14425 breaks recovery
 instant_alter_rollback : MDEV-14425 breaks recovery
 leaf_page_corrupted_during_recovery : MDEV-14425 breaks recovery
+log_corruption : MDEV-14425 breaks recovery
 log_data_file_size : MDEV-14425 breaks recovery
 log_file_name : MDEV-14425 breaks recovery
 log_file_name_debug : MDEV-14425 breaks recovery
