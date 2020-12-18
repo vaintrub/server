@@ -1,4 +1,5 @@
 log_page_corruption : MDEV-26210
+absolute_ibdata_paths : MDEV-14425 breaks recovery
 apply-log-only : MDEV-14425 breaks recovery
 apply-log-only-incr : MDEV-14425 breaks recovery
 backup_grants : MDEV-14425 breaks recovery
@@ -18,6 +19,7 @@ incremental_backup : MDEV-14425 breaks recovery
 incremental_ddl_before_backup : MDEV-14425 breaks recovery
 incremental_ddl_during_backup : MDEV-14425 breaks recovery
 incremental_encrypted : MDEV-14425 breaks recovery
+incremental_rocksdb : MDEV-14425 breaks recovery
 innodb_redo_overwrite : MDEV-14425 breaks recovery
 lock_ddl_per_table : MDEV-14425 breaks recovery
 log_checksum_mismatch : MDEV-14425 breaks recovery
@@ -35,6 +37,7 @@ recreate_table_during_backup : MDEV-14425 breaks recovery
 rename_during_backup : MDEV-14425 breaks recovery
 rename_during_mdl_lock : MDEV-14425 breaks recovery
 rpl_slave_info : MDEV-14425 breaks recovery
+skip_innodb : MDEV-14425 breaks recovery
 small_ibd : MDEV-14425 breaks recovery
 system_versioning : MDEV-14425 breaks recovery
 truncate_during_backup : MDEV-14425 breaks recovery
@@ -46,4 +49,6 @@ xb_fulltext_encrypted : MDEV-14425 breaks recovery
 xb_history : MDEV-14425 breaks recovery
 xb_page_compress : MDEV-14425 breaks recovery
 xb_partition : MDEV-14425 breaks recovery
+xb_rocksdb : MDEV-14425 breaks recovery
+xb_rocksdb_datadir : MDEV-14425 breaks recovery
 xbstream : MDEV-14425 breaks recovery
