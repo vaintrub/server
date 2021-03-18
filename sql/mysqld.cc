@@ -5683,6 +5683,7 @@ int mysqld_main(int argc, char **argv)
 
   if (ddl_log_execute_recovery() > 0)
     unireg_abort(1);
+  ha_signal_ddl_recovery_done();
 
   /*
     Change EVENTS_ORIGINAL to EVENTS_OFF (the default value) as there is no
