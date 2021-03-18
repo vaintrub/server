@@ -673,7 +673,6 @@ static thread_local THD *THR_THD;
 
 MYSQL_THD _current_thd() { return THR_THD; }
 THD *thd_get_current_thd() { return THR_THD; }
-
 void set_current_thd(THD *thd) { THR_THD= thd; }
 
 /*
