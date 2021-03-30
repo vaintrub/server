@@ -510,6 +510,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   int compl_result_code;
   bool need_repair_or_alter= 0;
   wait_for_commit* suspended_wfc;
+  LEX_CUSTRING tabledef_version;
   DBUG_ENTER("mysql_admin_table");
   DBUG_PRINT("enter", ("extra_open_options: %u", extra_open_options));
 
@@ -563,11 +564,16 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   {
     char table_name_buff[SAFE_NAME_LEN*2+2];
     LEX_CSTRING table_name= { table_name_buff, 0};
+    char storage_engine_name[NAME_LEN];
+    bool storage_engine_partitioned= 0;
+    uchar tabledef_version_buff[MY_UUID_SIZE];
     const char *db= table->db.str;
     bool fatal_error=0;
     bool open_error;
     bool collect_eis=  FALSE;
     bool open_for_modify= org_open_for_modify;
+
+    storage_engine_name[0]= 0;                  // Marker that's not used
 
     DBUG_PRINT("admin", ("table: '%s'.'%s'", db, table->table_name.str));
     table_name.length= strxmov(table_name_buff, db, ".", table->table_name.str,
@@ -780,6 +786,16 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
         thd->close_unused_temporary_table_instances(tables);
       else
       {
+        /* Store information about table for ddl log */
+        storage_engine_partitioned= table->table->file->partition_engine();
+        strmake(storage_engine_name, table->table->file->real_table_type(),
+                sizeof(storage_engine_name)-1);
+        tabledef_version.str= tabledef_version_buff;
+        if ((tabledef_version.length= table->table->s->tabledef_version.length))
+          memcpy((char*) tabledef_version.str,
+                 table->table->s->tabledef_version.str,
+                 MY_UUID_SIZE);
+
         if (wait_while_table_is_used(thd, table->table, HA_EXTRA_NOT_USED))
           goto err;
         DEBUG_SYNC(thd, "after_admin_flush");
@@ -1224,6 +1240,7 @@ send_result_message:
         break;
       }
     }
+
     if (table->table && !table->view)
     {
       /*
@@ -1271,6 +1288,22 @@ send_result_message:
         goto err;
     }
     close_thread_tables(thd);
+
+    if (storage_engine_name[0])
+    {
+      /* Table was changed (repair, optimize or something similar) */
+      backup_log_info ddl_log;
+      bzero(&ddl_log, sizeof(ddl_log));
+      lex_string_set(&ddl_log.org_storage_engine_name,
+                     storage_engine_name);
+      ddl_log.query=            *operator_name;
+      ddl_log.org_partitioned=  storage_engine_partitioned;
+      ddl_log.org_database=     table->db;
+      ddl_log.org_table=        table->table_name;
+      ddl_log.org_table_id=     tabledef_version;
+      backup_log_ddl(&ddl_log);
+    }
+
     thd->release_transactional_locks();
 
     /*
