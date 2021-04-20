@@ -88,10 +88,10 @@ IF(NOT GIT_EXECUTABLE)
     # In-source build is the worst option, we have to cleanup source tree.
 
     # Save bison output first.
-    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc.cc
-       ${CMAKE_BINARY_DIR}/sql_yacc.cc COPYONLY)
-    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc.hh
-       ${CMAKE_BINARY_DIR}/sql_yacc.hh COPYONLY)
+    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_default.cc
+       ${CMAKE_BINARY_DIR}/sql_yacc_default.cc COPYONLY)
+    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_default.hh
+       ${CMAKE_BINARY_DIR}/sql_yacc_default.hh COPYONLY)
 
     IF(CMAKE_GENERATOR MATCHES "Makefiles")
     # make clean
@@ -102,12 +102,12 @@ IF(NOT GIT_EXECUTABLE)
     ENDIF()
     
     # Restore bison output
-    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql_yacc.cc
-       ${CMAKE_BINARY_DIR}/sql/sql_yacc.cc COPYONLY)
-    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql_yacc.hh
+    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql_yacc_default.cc
+       ${CMAKE_BINARY_DIR}/sql/sql_yacc_default.cc COPYONLY)
+    CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql_yacc_default.hh
        ${CMAKE_BINARY_DIR}/sql/sql_yacc.h COPYONLY)
-    FILE(REMOVE ${CMAKE_BINARY_DIR}/sql_yacc.cc)
-    FILE(REMOVE ${CMAKE_BINARY_DIR}/sql_yacc.hh)
+    FILE(REMOVE ${CMAKE_BINARY_DIR}/sql_yacc_default.cc)
+    FILE(REMOVE ${CMAKE_BINARY_DIR}/sql_yacc_default.hh)
   ENDIF()
 
   EXECUTE_PROCESS(
@@ -124,16 +124,22 @@ IF(NOT GIT_EXECUTABLE)
   )
 ENDIF()
 
+# Copy generated yacc files
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_default.yy
+   ${PACKAGE_DIR}/sql/sql_yacc_default.yy COPYONLY)
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.yy
+   ${PACKAGE_DIR}/sql/sql_yacc_oracle.yy COPYONLY)
+
 # Copy bison output
-CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc.hh 
-   ${PACKAGE_DIR}/sql/sql_yacc.hh COPYONLY)
-CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc.cc
-   ${PACKAGE_DIR}/sql/sql_yacc.cc COPYONLY)
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_default.hh
+   ${PACKAGE_DIR}/sql/sql_yacc_default.hh COPYONLY)
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_default.cc
+   ${PACKAGE_DIR}/sql/sql_yacc_default.cc COPYONLY)
 # Copy bison output
-CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_ora.hh
-   ${PACKAGE_DIR}/sql/sql_yacc_ora.hh COPYONLY)
-CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_ora.cc
-   ${PACKAGE_DIR}/sql/sql_yacc_ora.cc COPYONLY)
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.hh
+   ${PACKAGE_DIR}/sql/sql_yacc_oracle.hh COPYONLY)
+CONFIGURE_FILE(${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.cc
+   ${PACKAGE_DIR}/sql/sql_yacc_oracle.cc COPYONLY)
 
 # Add documentation, if user has specified where to find them
 IF(MYSQL_DOCS_LOCATION)

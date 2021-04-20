@@ -10303,8 +10303,8 @@ bool check_host_name(LEX_CSTRING *str)
 }
 
 
-extern int MYSQLparse(THD *thd); // from sql_yacc.cc
-extern int ORAparse(THD *thd);   // from sql_yacc_ora.cc
+extern int MYSQLparse(THD *thd); // from sql_yacc_default.cc
+extern int ORAparse(THD *thd);   // from sql_yacc_oracle.cc
 
 
 /**
