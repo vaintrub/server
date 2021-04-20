@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2015, Oracle and/or its affiliates.
-   Copyright (c) 2010, 2020, MariaDB
+   Copyright (c) 2010, 2021, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,14 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
-/* sql_yacc.yy */
+/*
+  This file is used to generate sql_yacc.yy and sql_yacc_ora.yy
+  Anything between
+ "Start SQL_MODE_DEFAULT_SPECIFIC" and "End SQL_MODE_DEFAULT_SPECIFIC"
+  will only be in sql_yacc_default.yy and and anything between
+  "Start SQL_MODE_ORACLE_SPECIFIC" and "End SQL_MODE_ORACLE_SPECIFIC
+  will only be in sql_yacc_oracle.yy
+*/
 
 /**
   @defgroup Parser Parser

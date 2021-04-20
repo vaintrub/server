@@ -65,16 +65,25 @@ ADD_CUSTOM_COMMAND(
   DEPENDS gen_lex_token
 )
 
+ADD_CUSTOM_TARGET(gen_sql_yacc_oracle_yy
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.yy)
+
+ADD_CUSTOM_TARGET(gen_sql_yacc_default_yy
+        DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.yy)
+FIND_PROGRAM(PERL_EXECUTABLE perl)
+IF(NOT PERL_EXECUTABLE)
+ MESSAGE(WARNING "Perl not found, generation of bison files won't work")
+ SET(PERL sorry_I_found_no_perl)
+ELSE()
+ SET(PERL ${PERL_EXECUTABLE})
+ENDIF()
 ADD_CUSTOM_COMMAND(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.yy
-  COMMAND ${CMAKE_COMMAND}
-   "-DIN=${CMAKE_CURRENT_SOURCE_DIR}/sql_yacc.yy"
-   "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.yy"
-   -P ${CMAKE_CURRENT_SOURCE_DIR}/gen_sql_yacc_ora_yy.cmake
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.yy
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.yy
+  COMMAND ${PERL} ${CMAKE_CURRENT_SOURCE_DIR}/generate_sql_yacc.pl
+  ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sql_yacc.yy
 )
-
-ADD_CUSTOM_TARGET(gen_sql_yacc_ora_yy DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.yy)
 
 ADD_DEFINITIONS(-DMYSQL_SERVER -DHAVE_EVENT_SCHEDULER)
 
@@ -83,8 +92,8 @@ IF(SSL_DEFINES)
 ENDIF()
 
 SET (SQL_SOURCE
-               ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.cc
-               ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.cc
+               ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.cc
+               ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.cc
               ../sql-common/client.c compat56.cc derror.cc des_key_file.cc
                discover.cc ../sql-common/errmsg.c
                field.cc field_conv.cc field_comp.cc
@@ -331,7 +340,7 @@ FIND_PACKAGE(BISON 2.0)
 # there
 IF (NOT BISON_FOUND)
   IF (NOT ${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_BINARY_DIR})
-    FOREACH(file sql_yacc.cc sql_yacc.hh sql_yacc_ora.cc sql_yacc_ora.hh)
+    FOREACH(file sql_yacc_default.cc sql_yacc_default.hh sql_yacc_oracle.cc sql_yacc_oracle.hh)
     IF(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${file} AND (NOT EXISTS ${CMAKE_CURRENT_BINARY_DIR}/${file}))
         CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/${file}
         ${CMAKE_CURRENT_BINARY_DIR}/${file} COPYONLY)
@@ -354,15 +363,15 @@ IF (NOT BISON_FOUND)
       MESSAGE(FATAL_ERROR ${ERRMSG})
   ENDIF()
 ELSE()
-  BISON_TARGET(gen_sql_yacc ${CMAKE_CURRENT_SOURCE_DIR}/sql_yacc.yy ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.cc
+  BISON_TARGET(gen_sql_yacc ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.yy ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.cc
              COMPILE_FLAGS "-p MYSQL")
-  BISON_TARGET(gen_sql_yacc_ora ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.yy ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.cc
+  BISON_TARGET(gen_sql_yacc_oracle ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.yy ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.cc
              COMPILE_FLAGS "-p ORA")
 ENDIF()
 
 IF(NOT CMAKE_CROSSCOMPILING OR DEFINED CMAKE_CROSSCOMPILING_EMULATOR)
   ADD_EXECUTABLE(gen_lex_token gen_lex_token.cc
-   ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.hh)
+   ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_default.hh)
   ADD_EXECUTABLE(gen_lex_hash gen_lex_hash.cc)
 ENDIF()
 
@@ -381,10 +390,10 @@ ADD_CUSTOM_TARGET(
         DEPENDS
         ${CMAKE_CURRENT_BINARY_DIR}/lex_hash.h
         ${CMAKE_CURRENT_BINARY_DIR}/lex_token.h
-        ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_ora.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc_oracle.cc
 )
 
-ADD_DEPENDENCIES(GenServerSource gen_sql_yacc_ora_yy)
+ADD_DEPENDENCIES(GenServerSource gen_sql_yacc_oracle_yy gen_sql_yacc_default_yy)
 
 IF(WIN32 OR HAVE_DLOPEN AND NOT DISABLE_SHARED)
   ADD_LIBRARY(udf_example MODULE udf_example.c udf_example.def)
@@ -398,8 +407,9 @@ CONFIGURE_FILE(
 
 ADD_CUSTOM_TARGET(dist
   COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/make_dist.cmake
-  DEPENDS ${CMAKE_BINARY_DIR}/sql/sql_yacc.cc ${CMAKE_BINARY_DIR}/sql/sql_yacc.hh
-  DEPENDS ${CMAKE_BINARY_DIR}/sql/sql_yacc_ora.cc ${CMAKE_BINARY_DIR}/sql/sql_yacc_ora.hh
+  DEPENDS ${CMAKE_BINARY_DIR}/sql/sql_yacc_default.yy ${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.yy
+  DEPENDS ${CMAKE_BINARY_DIR}/sql/sql_yacc_default.cc ${CMAKE_BINARY_DIR}/sql/sql_yacc_default.hh
+  DEPENDS ${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.cc ${CMAKE_BINARY_DIR}/sql/sql_yacc_oracle.hh
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 

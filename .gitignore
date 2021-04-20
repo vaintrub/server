@@ -199,9 +199,15 @@ sql/mysqld
 sql/sql_builtin.cc
 sql/sql_yacc.cc
 sql/sql_yacc.hh
+sql/sql_yacc_default.cc
+sql/sql_yacc_default.hh
+sql/sql_yacc_default.yy
 sql/sql_yacc_ora.cc
 sql/sql_yacc_ora.hh
 sql/sql_yacc_ora.yy
+sql/sql_yacc_oracle.cc
+sql/sql_yacc_oracle.hh
+sql/sql_yacc_oracle.yy
 storage/heap/hp_test1
 storage/heap/hp_test2
 storage/maria/aria_chk
