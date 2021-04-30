@@ -74,6 +74,7 @@ C_MODE_START
 #define MY_SHORT_WAIT	64U	/* my_lock() don't wait if can't lock */
 #define MY_FORCE_LOCK   128U    /* use my_lock() even if disable_locking */
 #define MY_NO_WAIT      256U	/* my_lock() don't wait at all */
+#define MY_NO_REGISTER  8196U   /* my_open(), no malloc for file name */
 /*
   init_dynamic_array() has init buffer; Internal flag, not to be used by
   caller.
