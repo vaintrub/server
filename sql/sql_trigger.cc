@@ -416,7 +416,9 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
   bool add_if_exists_to_binlog= 0, action_executed= 0;
   String stmt_query;
   bool lock_upgrade_done= FALSE;
+  bool backup_of_table_list_done= 0;;
   MDL_ticket *mdl_ticket= NULL;
+  MDL_request mdl_request_for_trn;
   Query_tables_list backup;
   DDL_LOG_STATE ddl_log_state, ddl_log_state_tmp_file;
   char trn_path_buff[FN_REFLEN];
@@ -470,6 +472,16 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
     DBUG_RETURN(TRUE);
   }
 
+  /* Protect against concurrent create/drop */
+  MDL_REQUEST_INIT(&mdl_request_for_trn, MDL_key::TRIGGER,
+                   create ? tables->db.str : thd->lex->spname->m_db.str,
+                   thd->lex->spname->m_name.str,
+                   MDL_EXCLUSIVE, MDL_EXPLICIT);
+  if (thd->mdl_context.acquire_lock(&mdl_request_for_trn,
+                                    thd->variables.lock_wait_timeout))
+    goto end;
+
+
   if (!create)
   {
     bool if_exists= thd->lex->if_exists();
@@ -478,6 +490,7 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
       Protect the query table list from the temporary and potentially
       destructive changes necessary to open the trigger's table.
     */
+    backup_of_table_list_done= 1;
     thd->lex->reset_n_backup_query_tables_list(&backup);
     /*
       Restore Query_tables_list::sql_command, which was
@@ -694,7 +707,7 @@ end:
     mdl_ticket->downgrade_lock(MDL_SHARED_NO_READ_WRITE);
 
   /* Restore the query table list. Used only for drop trigger. */
-  if (!create)
+  if (backup_of_table_list_done)
     thd->lex->restore_backup_query_tables_list(&backup);
 
   if (!result)
@@ -705,6 +718,9 @@ end:
                   thd->lex->spname->m_db.str, static_cast<uint>(thd->lex->spname->m_db.length),
                   thd->lex->spname->m_name.str, static_cast<uint>(thd->lex->spname->m_name.length));
   }
+
+  if (mdl_request_for_trn.ticket)
+    thd->mdl_context.release_lock(mdl_request_for_trn.ticket);
 
   DBUG_RETURN(result);
 #ifdef WITH_WSREP
