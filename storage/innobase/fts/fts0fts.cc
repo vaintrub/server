@@ -1401,46 +1401,45 @@ fts_cache_add_doc(
 	}
 }
 
-/****************************************************************//**
-Drops a table. If the table can't be found we return a SUCCESS code.
-@return DB_SUCCESS or error code */
-static MY_ATTRIBUTE((nonnull, warn_unused_result))
-dberr_t
-fts_drop_table(
-/*===========*/
-	trx_t*		trx,			/*!< in: transaction */
-	const char*	table_name)		/*!< in: table to drop */
+/** Drop a table.
+@param trx          transaction
+@param table_name   FTS_ table name
+@param rename       whether to rename before dropping
+@return error code
+@retval DB_SUCCESS  if the table was dropped
+@retval DB_FAIL     if the table did not exist */
+static dberr_t fts_drop_table(trx_t *trx, const char *table_name, bool rename)
 {
-	dict_table_t*	table;
-	dberr_t		error = DB_SUCCESS;
+  if (dict_table_t *table= dict_table_open_on_name(table_name, TRUE, FALSE,
+                                                   DICT_ERR_IGNORE_DROP))
+  {
+    table->release();
+    if (rename)
+    {
+      mem_heap_t *heap= mem_heap_create(FN_REFLEN);
+      char *tmp= dict_mem_create_temporary_tablename(heap, table->name.m_name,
+                                                     table->id);
+      dberr_t err= row_rename_table_for_mysql(table->name.m_name, tmp, trx,
+                                              false, false);
+      mem_heap_free(heap);
+      if (err != DB_SUCCESS)
+      {
+        ib::error() << "Unable to rename table " << table_name << ": " << err;
+        return err;
+      }
+    }
+    if (dberr_t err= row_drop_table_for_mysql(table->name.m_name, trx,
+                                              SQLCOM_DROP_DB, false, false))
+    {
+      ib::error() << "Unable to drop table " << table_name << ": " << err;
 
-	/* Check that the table exists in our data dictionary.
-	Similar to regular drop table case, we will open table with
-	DICT_ERR_IGNORE_INDEX_ROOT and DICT_ERR_IGNORE_CORRUPT option */
-	table = dict_table_open_on_name(
-		table_name, TRUE, FALSE,
-		static_cast<dict_err_ignore_t>(
-                        DICT_ERR_IGNORE_INDEX_ROOT | DICT_ERR_IGNORE_CORRUPT));
+      return err;
+    }
 
-	if (table != 0) {
+    return DB_SUCCESS;
+  }
 
-		dict_table_close(table, TRUE, FALSE);
-
-		/* Pass nonatomic=false (don't allow data dict unlock),
-		because the transaction may hold locks on SYS_* tables from
-		previous calls to fts_drop_table(). */
-		error = row_drop_table_for_mysql(table_name, trx,
-						 SQLCOM_DROP_DB, false, false);
-
-		if (UNIV_UNLIKELY(error != DB_SUCCESS)) {
-			ib::error() << "Unable to drop FTS index aux table "
-				<< table_name << ": " << error;
-		}
-	} else {
-		error = DB_FAIL;
-	}
-
-	return(error);
+  return DB_FAIL;
 }
 
 /****************************************************************//**
@@ -1543,22 +1542,23 @@ fts_rename_aux_tables(
 /** Drops the common ancillary tables needed for supporting an FTS index
 on the given table. row_mysql_lock_data_dictionary must have been called
 before this.
-@param[in]	trx		transaction to drop fts common table
-@param[in]	fts_table	table with an FTS index
+@param trx          transaction to drop fts common table
+@param fts_table    table with an FTS index
+@param rename       whether to rename before dropping
 @return DB_SUCCESS or error code */
-static dberr_t fts_drop_common_tables(trx_t *trx, fts_table_t *fts_table)
+static dberr_t fts_drop_common_tables(trx_t *trx, fts_table_t *fts_table,
+                                      bool rename)
 {
-	ulint		i;
 	dberr_t		error = DB_SUCCESS;
 
-	for (i = 0; fts_common_tables[i] != NULL; ++i) {
+	for (ulint i = 0; fts_common_tables[i] != NULL; ++i) {
 		dberr_t	err;
 		char	table_name[MAX_FULL_NAME_LEN];
 
 		fts_table->suffix = fts_common_tables[i];
 		fts_get_table_name(fts_table, table_name, true);
 
-		err = fts_drop_table(trx, table_name);
+		err = fts_drop_table(trx, table_name, rename);
 
 		/* We only return the status of the last error. */
 		if (err != DB_SUCCESS && err != DB_FAIL) {
@@ -1591,7 +1591,7 @@ fts_drop_index_tables(
 		fts_table.suffix = fts_get_suffix(i);
 		fts_get_table_name(&fts_table, table_name, true);
 
-		err = fts_drop_table(trx, table_name);
+		err = fts_drop_table(trx, table_name, false);
 
 		/* We only return the status of the last error. */
 		if (err != DB_SUCCESS && err != DB_FAIL) {
@@ -1654,7 +1654,7 @@ fts_drop_tables(
 
 	/* TODO: This is not atomic and can cause problems during recovery. */
 
-	error = fts_drop_common_tables(trx, &fts_table);
+	error = fts_drop_common_tables(trx, &fts_table, false);
 
 	if (error == DB_SUCCESS && table->fts) {
 		error = fts_drop_all_index_tables(trx, table->fts);
@@ -1798,7 +1798,7 @@ fts_create_common_tables(
 
 	FTS_INIT_FTS_TABLE(&fts_table, NULL, FTS_COMMON_TABLE, table);
 
-	error = fts_drop_common_tables(trx, &fts_table);
+	error = fts_drop_common_tables(trx, &fts_table, true);
 
 	if (error != DB_SUCCESS) {
 
