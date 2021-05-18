@@ -3814,7 +3814,7 @@ mysql_execute_command(THD *thd)
 
 #ifdef WITH_WSREP
   /* Check wsrep_mode rules before command execution. */
-  if (WSREP(thd) &&
+  if (WSREP_NNULL(thd) &&
       wsrep_thd_is_local(thd) && !wsrep_check_mode_before_cmd_execute(thd))
     goto error;
 
@@ -4930,7 +4930,7 @@ mysql_execute_command(THD *thd)
       {
         if (!lex->tmp_table() &&
            (!thd->is_current_stmt_binlog_format_row() ||
-	    !thd->find_temporary_table(table)))
+	    !is_temporary_table(table)))
         {
           WSREP_TO_ISOLATION_BEGIN(NULL, NULL, all_tables);
           break;
@@ -10303,8 +10303,8 @@ bool check_host_name(LEX_CSTRING *str)
 }
 
 
-extern int MYSQLparse(THD *thd); // from sql_yacc.cc
-extern int ORAparse(THD *thd);   // from sql_yacc_ora.cc
+extern int MYSQLparse(THD *thd); // from sql_yacc_default.cc
+extern int ORAparse(THD *thd);   // from sql_yacc_oracle.cc
 
 
 /**
@@ -10444,7 +10444,8 @@ merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl)
   {
     if (!my_charset_same(cs, cl))
     {
-      my_error(ER_COLLATION_CHARSET_MISMATCH, MYF(0), cl->name, cs->csname);
+      my_error(ER_COLLATION_CHARSET_MISMATCH, MYF(0), cl->coll_name.str,
+               cs->cs_name.str);
       return NULL;
     }
     return cl;
@@ -10456,7 +10457,7 @@ merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl)
 */
 CHARSET_INFO *find_bin_collation(CHARSET_INFO *cs)
 {
-  const char *csname= cs->csname;
+  const char *csname= cs->cs_name.str;
   cs= get_charset_by_csname(csname, MY_CS_BINSORT, MYF(0));
   if (!cs)
   {

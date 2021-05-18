@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2015, Oracle and/or its affiliates.
-   Copyright (c) 2010, 2020, MariaDB
+   Copyright (c) 2010, 2021, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,7 +15,14 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1335  USA */
 
-/* sql_yacc.yy */
+/*
+  This file is used to generate sql_yacc.yy and sql_yacc_ora.yy
+  Anything between
+ "Start SQL_MODE_DEFAULT_SPECIFIC" and "End SQL_MODE_DEFAULT_SPECIFIC"
+  will only be in sql_yacc_default.yy and and anything between
+  "Start SQL_MODE_ORACLE_SPECIFIC" and "End SQL_MODE_ORACLE_SPECIFIC
+  will only be in sql_yacc_oracle.yy
+*/
 
 /**
   @defgroup Parser Parser
@@ -202,7 +209,7 @@ void _CONCAT_UNDERSCORED(turn_parser_debug_on,yyparse)()
     {  \
       if (unlikely(Lex->charset && !my_charset_same(Lex->charset,X)))  \
         my_yyabort_error((ER_COLLATION_CHARSET_MISMATCH, MYF(0),  \
-                          X->name,Lex->charset->csname));  \
+                          X->coll_name.str,Lex->charset->cs_name.str));  \
       Lex->charset= X;  \
     }  \
   } while(0)
@@ -592,6 +599,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd> MEDIUMINT
 %token  <kwd> MEDIUMTEXT
 %token  <kwd> MIN_SYM                       /* SQL-2003-N */
+%token  <kwd> MINUS_ORACLE_SYM              /* Oracle-R   */
 %token  <kwd> MINUTE_MICROSECOND_SYM
 %token  <kwd> MINUTE_SECOND_SYM
 %token  <kwd> MODIFIES_SYM                  /* SQL-2003-R */
@@ -738,6 +746,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd>  PACKAGE_MARIADB_SYM           // Oracle-R
 %token  <kwd>  RAISE_MARIADB_SYM             // PLSQL-R
 %token  <kwd>  ROWTYPE_MARIADB_SYM           // PLSQL-R
+%token  <kwd>  ROWNUM_SYM                    /* Oracle-R */
 
 /*
   Non-reserved keywords
@@ -747,6 +756,7 @@ End SQL_MODE_ORACLE_SPECIFIC */
 %token  <kwd>  ACTION                        /* SQL-2003-N */
 %token  <kwd>  ADMIN_SYM                     /* SQL-2003-N */
 %token  <kwd>  ADDDATE_SYM                   /* MYSQL-FUNC */
+%token  <kwd>  ADD_MONTHS_SYM                /* Oracle FUNC*/
 %token  <kwd>  AFTER_SYM                     /* SQL-2003-N */
 %token  <kwd>  AGAINST
 %token  <kwd>  AGGREGATE_SYM
@@ -6581,7 +6591,7 @@ attribute:
           {
             if (unlikely(Lex->charset && !my_charset_same(Lex->charset,$2)))
               my_yyabort_error((ER_COLLATION_CHARSET_MISMATCH, MYF(0),
-                                $2->name,Lex->charset->csname));
+                                $2->coll_name.str, Lex->charset->cs_name.str));
             Lex->last_field->charset= $2;
           }
         | serial_attribute
@@ -6794,7 +6804,7 @@ binary:
           {
             if (!my_charset_same(Lex->charset, $1))
               my_yyabort_error((ER_COLLATION_CHARSET_MISMATCH, MYF(0),
-                                Lex->charset->name, $1->csname));
+                                Lex->charset->coll_name.str, $1->cs_name.str));
           }
         | collate { }
         ;
@@ -7788,7 +7798,7 @@ alter_list_item:
           {
             LEX *lex=Lex;
             Alter_drop *ad= (new (thd->mem_root)
-                             Alter_drop(Alter_drop::KEY, primary_key_name,
+                             Alter_drop(Alter_drop::KEY, primary_key_name.str,
                                         FALSE));
             if (unlikely(ad == NULL))
               MYSQL_YYABORT;
@@ -7877,7 +7887,7 @@ alter_list_item:
             $5= $5 ? $5 : $4;
             if (unlikely(!my_charset_same($4,$5)))
               my_yyabort_error((ER_COLLATION_CHARSET_MISMATCH, MYF(0),
-                                $5->name, $4->csname));
+                                $5->coll_name.str, $4->cs_name.str));
             if (unlikely(Lex->create_info.add_alter_list_item_convert_to_charset($5)))
               MYSQL_YYABORT;
             Lex->alter_info.flags|= ALTER_CONVERT_TO;
@@ -9218,7 +9228,7 @@ select_item:
               if (unlikely(Lex->sql_command == SQLCOM_CREATE_VIEW &&
                           check_column_name($4.str)))
                 my_yyabort_error((ER_WRONG_COLUMN_NAME, MYF(0), $4.str));
-              $2->common_flags&= ~IS_AUTO_GENERATED_NAME;
+              $2->base_flags|= item_base_t::IS_EXPLICIT_NAME;
               $2->set_name(thd, $4);
             }
             else if (!$2->name.str || $2->name.str == item_empty_name)
@@ -10235,7 +10245,14 @@ function_call_keyword:
   discouraged.
 */
 function_call_nonkeyword:
-          ADDDATE_SYM '(' expr ',' expr ')'
+          ADD_MONTHS_SYM '(' expr ',' expr ')'
+          {
+            $$= new (thd->mem_root) Item_date_add_interval(thd, $3, $5,
+                                                           INTERVAL_MONTH, 0);
+            if (unlikely($$ == NULL))
+              MYSQL_YYABORT;
+          }
+        | ADDDATE_SYM '(' expr ',' expr ')'
           {
             $$= new (thd->mem_root) Item_date_add_interval(thd, $3, $5,
                                                              INTERVAL_DAY, 0);
@@ -10323,6 +10340,22 @@ function_call_nonkeyword:
             if (unlikely($$ == NULL))
               MYSQL_YYABORT;
           }
+/* Start SQL_MODE_ORACLE_SPECIFIC
+         | ROWNUM_SYM optional_braces
+          {
+            $$= new (thd->mem_root) Item_func_rownum(thd);
+            if (unlikely($$ == NULL))
+              MYSQL_YYABORT;
+          }
+End SQL_MODE_ORACLE_SPECIFIC */
+/* Start SQL_MODE_DEFAULT_SPECIFIC */
+         | ROWNUM_SYM '(' ')'
+          {
+            $$= new (thd->mem_root) Item_func_rownum(thd);
+            if (unlikely($$ == NULL))
+              MYSQL_YYABORT;
+          }
+/* End SQL_MODE_DEFAULT_SPECIFIC */
         | SUBDATE_SYM '(' expr ',' expr ')'
           {
             $$= new (thd->mem_root) Item_date_add_interval(thd, $3, $5,
@@ -10356,23 +10389,22 @@ function_call_nonkeyword:
             if (unlikely(!($$= Lex->make_item_func_substr(thd, $3, $5))))
               MYSQL_YYABORT;
           }
-        | SYSDATE opt_time_precision
+/* Start SQL_MODE_ORACLE_SPECIFIC
+        | SYSDATE
           {
-            /*
-              Unlike other time-related functions, SYSDATE() is
-              replication-unsafe because it is not affected by the
-              TIMESTAMP variable.  It is unsafe even if
-              sysdate_is_now=1, because the slave may have
-              sysdate_is_now=0.
-            */
-            Lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
-            if (global_system_variables.sysdate_is_now == 0)
-              $$= new (thd->mem_root) Item_func_sysdate_local(thd, $2);
-            else
-              $$= new (thd->mem_root) Item_func_now_local(thd, $2);
-            if (unlikely($$ == NULL))
-              MYSQL_YYABORT;
-            Lex->safe_to_cache_query=0;
+             if (unlikely(!($$= Lex->make_item_func_sysdate(thd, 0))))
+               MYSQL_YYABORT;
+          }
+End SQL_MODE_ORACLE_SPECIFIC */
+        | SYSDATE '(' ')'
+          {
+             if (unlikely(!($$= Lex->make_item_func_sysdate(thd, 0))))
+               MYSQL_YYABORT;
+          }
+        | SYSDATE '(' real_ulong_num ')'
+          {
+             if (unlikely(!($$= Lex->make_item_func_sysdate(thd, (uint) $3))))
+               MYSQL_YYABORT;
           }
         | TIMESTAMP_ADD '(' interval_time_stamp ',' expr ',' expr ')'
           {
@@ -10796,7 +10828,7 @@ udf_expr:
             */
             if ($4.str)
             {
-              $2->common_flags&= ~IS_AUTO_GENERATED_NAME;
+              $2->base_flags|= item_base_t::IS_EXPLICIT_NAME;
               $2->set_name(thd, $4);
             }
             /* 
@@ -12072,18 +12104,18 @@ using_list:
           {
             if (unlikely(!($$= new (thd->mem_root) List<String>)))
               MYSQL_YYABORT;
-            String *s= new (thd->mem_root) String((const char *) $1.str,
-                                                    $1.length,
-                                                    system_charset_info);
+            String *s= new (thd->mem_root) String((const char*) $1.str,
+                                                  $1.length,
+                                                  system_charset_info);
             if (unlikely(unlikely(s == NULL)))
               MYSQL_YYABORT;
             $$->push_back(s, thd->mem_root);
           }
         | using_list ',' ident
           {
-            String *s= new (thd->mem_root) String((const char *) $3.str,
-                                                    $3.length,
-                                                    system_charset_info);
+            String *s= new (thd->mem_root) String((const char*) $3.str,
+                                                  $3.length,
+                                                  system_charset_info);
             if (unlikely(unlikely(s == NULL)))
               MYSQL_YYABORT;
             if (unlikely($1->push_back(s, thd->mem_root)))
@@ -14251,8 +14283,9 @@ wild_and_where:
           /* empty */ { $$= 0; }
         | LIKE remember_tok_start TEXT_STRING_sys
           {
-            Lex->wild= new (thd->mem_root) String($3.str, $3.length,
-                                                    system_charset_info);
+            Lex->wild= new (thd->mem_root) String((const char*) $3.str,
+                                                   $3.length,
+                                                   system_charset_info);
             if (unlikely(Lex->wild == NULL))
               MYSQL_YYABORT;
             $$= $2;
@@ -14926,9 +14959,9 @@ text_literal:
 text_string:
           TEXT_STRING_literal
           {
-            $$= new (thd->mem_root) String($1.str,
-                                             $1.length,
-                                             thd->variables.collation_connection);
+            $$= new (thd->mem_root) String((const char*) $1.str,
+                                           $1.length,
+                                           thd->variables.collation_connection);
             if (unlikely($$ == NULL))
               MYSQL_YYABORT;
           }
@@ -15851,6 +15884,7 @@ keyword_sp_var_and_label:
           ACTION
         | ACCOUNT_SYM
         | ADDDATE_SYM
+        | ADD_MONTHS_SYM
         | ADMIN_SYM
         | AFTER_SYM
         | AGAINST
@@ -16019,6 +16053,9 @@ keyword_sp_var_and_label:
         | MICROSECOND_SYM
         | MIGRATE_SYM
         | MINUTE_SYM
+/* Start SQL_MODE_DEFAULT_SPECIFIC */
+        | MINUS_ORACLE_SYM
+/* End SQL_MODE_DEFAULT_SPECIFIC */
         | MINVALUE_SYM
         | MIN_ROWS
         | MODIFY_SYM
@@ -16103,6 +16140,9 @@ keyword_sp_var_and_label:
         | ROWTYPE_MARIADB_SYM
         | ROW_COUNT_SYM
         | ROW_FORMAT_SYM
+/* Start SQL_MODE_DEFAULT_SPECIFIC */
+        | ROWNUM_SYM
+/* End SQL_MODE_DEFAULT_SPECIFIC */
         | RTREE_SYM
         | SCHEDULE_SYM
         | SCHEMA_NAME_SYM
@@ -16138,6 +16178,9 @@ keyword_sp_var_and_label:
         | SUSPEND_SYM
         | SWAPS_SYM
         | SWITCHES_SYM
+/* Start SQL_MODE_DEFAULT_SPECIFIC */
+        | SYSDATE
+/* End SQL_MODE_DEFAULT_SPECIFIC */
         | SYSTEM
         | SYSTEM_TIME_SYM
         | TABLE_NAME_SYM
@@ -16305,6 +16348,9 @@ reserved_keyword_udt_not_param_type:
         | MINUTE_MICROSECOND_SYM
         | MINUTE_SECOND_SYM
         | MIN_SYM
+/* Start SQL_MODE_ORACLE_SPECIFIC
+        | MINUS_ORACLE_SYM
+End SQL_MODE_ORACLE_SPECIFIC */
         | MODIFIES_SYM
         | MOD_SYM
         | NATURAL
@@ -16387,7 +16433,6 @@ reserved_keyword_udt_not_param_type:
         | STRAIGHT_JOIN
         | SUBSTRING
         | SUM_SYM
-        | SYSDATE
         | TABLE_REF_PRIORITY
         | TABLE_SYM
         | TERMINATED
@@ -16751,7 +16796,7 @@ option_value_no_option_type:
             if (unlikely(!my_charset_same(cs2, cs3)))
             {
               my_error(ER_COLLATION_CHARSET_MISMATCH, MYF(0),
-                       cs3->name, cs2->csname);
+                       cs3->coll_name.str, cs2->cs_name.str);
               MYSQL_YYABORT;
             }
             set_var_collation_client *var;

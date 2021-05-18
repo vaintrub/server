@@ -207,7 +207,7 @@ extern MYSQL_PLUGIN_IMPORT char glob_hostname[FN_REFLEN];
 extern char mysql_home[FN_REFLEN];
 extern char pidfile_name[FN_REFLEN], system_time_zone[30], *opt_init_file;
 extern char default_logfile_name[FN_REFLEN];
-extern char log_error_file[FN_REFLEN], *opt_tc_log_file;
+extern char log_error_file[FN_REFLEN], *opt_tc_log_file, *opt_ddl_recovery_file;
 extern const double log_10[309];
 extern ulonglong keybuff_size;
 extern ulonglong thd_startup_options;
@@ -268,6 +268,8 @@ extern MYSQL_PLUGIN_IMPORT const char  *my_localhost;
 extern MYSQL_PLUGIN_IMPORT const char **errmesg;			/* Error messages */
 extern const char *myisam_recover_options_str;
 extern const LEX_CSTRING in_left_expr_name, in_additional_cond, in_having_cond;
+extern const LEX_CSTRING NULL_clex_str;
+extern const LEX_CSTRING error_clex_str;
 extern SHOW_VAR status_vars[];
 extern struct system_variables max_system_variables;
 extern struct system_status_var global_status_var;
@@ -394,7 +396,7 @@ extern PSI_file_key key_file_binlog, key_file_binlog_cache,
   key_file_loadfile, key_file_log_event_data, key_file_log_event_info,
   key_file_master_info, key_file_misc, key_file_partition_ddl_log,
   key_file_pid, key_file_relay_log_info, key_file_send_file, key_file_tclog,
-  key_file_trg, key_file_trn, key_file_init;
+  key_file_trg, key_file_trn, key_file_init, key_file_log_ddl;
 extern PSI_file_key key_file_query_log, key_file_slow_log;
 extern PSI_file_key key_file_relaylog, key_file_relaylog_index,
                     key_file_relaylog_cache, key_file_relaylog_index_cache;
@@ -742,7 +744,7 @@ extern mysql_mutex_t
        LOCK_error_log, LOCK_delayed_insert, LOCK_short_uuid_generator,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_active_mi, LOCK_manager, LOCK_user_conn,
-       LOCK_prepared_stmt_count, LOCK_error_messages;
+       LOCK_prepared_stmt_count, LOCK_error_messages,  LOCK_backup_log;
 extern MYSQL_PLUGIN_IMPORT mysql_mutex_t LOCK_global_system_variables;
 extern mysql_rwlock_t LOCK_all_status_vars;
 extern mysql_mutex_t LOCK_start_thread;

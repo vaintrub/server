@@ -993,7 +993,7 @@ With_element::process_columns_of_derived_unit(THD *thd,
     while ((item= it++, name= nm++))
     {
       item->set_name(thd, *name);
-      item->common_flags&= ~IS_AUTO_GENERATED_NAME;
+      item->base_flags|= item_base_t::IS_EXPLICIT_NAME;
     }
 
     if (arena)
@@ -1036,7 +1036,7 @@ With_element::process_columns_of_derived_unit(THD *thd,
         my_error(ER_BAD_FIELD_ERROR, MYF(0), name->str, "CYCLE clause");
         return true;
       }
-      item->common_flags|= IS_IN_WITH_CYCLE;
+      item->base_flags|= item_base_t::IS_IN_WITH_CYCLE;
     }
   }
   unit->columns_are_renamed= true;
@@ -1478,7 +1478,7 @@ void With_clause::print(THD *thd, String *str, enum_query_type query_type)
        with_elem= with_elem->next)
   {
     if (with_elem != with_list.first)
-      str->append(", ");
+      str->append(STRING_WITH_LEN(", "));
     with_elem->print(thd, str, query_type);
   }
 }

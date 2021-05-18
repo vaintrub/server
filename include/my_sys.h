@@ -74,6 +74,7 @@ C_MODE_START
 #define MY_SHORT_WAIT	64U	/* my_lock() don't wait if can't lock */
 #define MY_FORCE_LOCK   128U    /* use my_lock() even if disable_locking */
 #define MY_NO_WAIT      256U	/* my_lock() don't wait at all */
+#define MY_NO_REGISTER  8196U   /* my_open(), no malloc for file name */
 /*
   init_dynamic_array() has init buffer; Internal flag, not to be used by
   caller.
@@ -1012,10 +1013,12 @@ int my_msync(int, void *, size_t, int);
 
 #define MY_UUID_SIZE 16
 #define MY_UUID_STRING_LENGTH (8+1+4+1+4+1+4+1+12)
+#define MY_UUID_ORACLE_STRING_LENGTH (8+4+4+4+12)
 
 void my_uuid_init(ulong seed1, ulong seed2);
 void my_uuid(uchar *guid);
 void my_uuid2str(const uchar *guid, char *s);
+void my_uuid2str_oracle(const uchar *guid, char *s);
 void my_uuid_end(void);
 
 const char *my_dlerror(const char *dlpath);
@@ -1045,14 +1048,15 @@ extern void free_charsets(void);
 extern char *get_charsets_dir(char *buf);
 static inline my_bool my_charset_same(CHARSET_INFO *cs1, CHARSET_INFO *cs2)
 {
-  return (cs1->csname == cs2->csname);
+  return (cs1->cs_name.str == cs2->cs_name.str);
 }
 extern my_bool init_compiled_charsets(myf flags);
 extern void add_compiled_collation(struct charset_info_st *cs);
 extern void add_compiled_extra_collation(struct charset_info_st *cs);
 extern size_t escape_string_for_mysql(CHARSET_INFO *charset_info,
                                       char *to, size_t to_length,
-                                      const char *from, size_t length);
+                                      const char *from, size_t length,
+                                      my_bool *overflow);
 extern char *get_tty_password(const char *opt_message);
 #ifdef _WIN32
 #define BACKSLASH_MBTAIL
@@ -1062,7 +1066,8 @@ extern CHARSET_INFO *fs_character_set(void);
 extern const char *my_default_csname(void);
 extern size_t escape_quotes_for_mysql(CHARSET_INFO *charset_info,
                                       char *to, size_t to_length,
-                                      const char *from, size_t length);
+                                      const char *from, size_t length,
+                                      my_bool *overflow);
 
 extern void thd_increment_bytes_sent(void *thd, size_t length);
 extern void thd_increment_bytes_received(void *thd, size_t length);

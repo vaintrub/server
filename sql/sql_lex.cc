@@ -51,7 +51,8 @@ const LEX_CSTRING null_clex_str=  {NULL, 0};
 const LEX_CSTRING empty_clex_str= {"", 0};
 const LEX_CSTRING star_clex_str=  {"*", 1};
 const LEX_CSTRING param_clex_str= {"?", 1};
-
+const LEX_CSTRING NULL_clex_str=  {STRING_WITH_LEN("NULL")};
+const LEX_CSTRING error_clex_str= {STRING_WITH_LEN("error")};
 
 /**
   Helper action for a case expression statement (the expr in 'CASE expr').
@@ -1252,33 +1253,40 @@ void LEX::start(THD *thd_arg)
   unit.slave= current_select= all_selects_list= &builtin_select;
   sql_cache= LEX::SQL_CACHE_UNSPECIFIED;
   describe= 0;
-  analyze_stmt= 0;
-  explain_json= false;
   context_analysis_only= 0;
   derived_tables= 0;
-  safe_to_cache_query= 1;
   parsing_options.reset();
-  empty_field_list_on_rset= 0;
   part_info= 0;
   m_sql_cmd= NULL;
   duplicates= DUP_ERROR;
-  ignore= 0;
   spname= NULL;
   spcont= NULL;
   proc_list.first= 0;
-  escape_used= FALSE;
-  default_used= FALSE;
   query_tables= 0;
   reset_query_tables_list(FALSE);
   clause_that_disallows_subselect= NULL;
-  selects_allow_into= FALSE;
-  selects_allow_procedure= FALSE;
-  use_only_table_context= FALSE;
-  parse_vcol_expr= FALSE;
-  check_exists= FALSE;
-  create_info.lex_start();
-  verbose= 0;
 
+  /* reset bool variables */
+  is_shutdown_wait_for_slaves= 0;
+  selects_allow_procedure= 0;
+  parse_vcol_expr= 0;
+  analyze_stmt= 0;
+  explain_json= 0;
+  local_file= 0;
+  check_exists= 0;
+  verbose= 0;
+  safe_to_cache_query= 1;
+  ignore= 0;
+  next_is_main= 0;
+  next_is_down= 0;
+  empty_field_list_on_rset= 0;
+  use_only_table_context= 0;
+  escape_used= 0;
+  default_used= 0;
+  with_rownum= FALSE;
+  is_lex_started= 1;
+
+  create_info.lex_start();
   name= null_clex_str;
   event_parse_data= NULL;
   profile_options= PROFILE_NONE;
@@ -1306,11 +1314,6 @@ void LEX::start(THD *thd_arg)
 
   vers_conditions.empty();
   period_conditions.empty();
-
-  is_lex_started= TRUE;
-
-  next_is_main= FALSE;
-  next_is_down= FALSE;
 
   wild= 0;
   exchange= 0;
@@ -1401,6 +1404,7 @@ int Lex_input_stream::find_keyword(Lex_ident_cli_st *kwd,
       case EXCEPTION_MARIADB_SYM:      return EXCEPTION_ORACLE_SYM;
       case EXIT_MARIADB_SYM:           return EXIT_ORACLE_SYM;
       case GOTO_MARIADB_SYM:           return GOTO_ORACLE_SYM;
+      case MINUS_ORACLE_SYM:           return EXCEPT_SYM;
       case NUMBER_MARIADB_SYM:         return NUMBER_ORACLE_SYM;
       case OTHERS_MARIADB_SYM:         return OTHERS_ORACLE_SYM;
       case PACKAGE_MARIADB_SYM:        return PACKAGE_ORACLE_SYM;
@@ -2896,25 +2900,30 @@ void st_select_lex_unit::init_query()
   set_linkage(GLOBAL_OPTIONS_TYPE);
   lim.clear();
   union_distinct= 0;
-  prepared= optimized= optimized_2= executed= 0;
-  bag_set_op_optimized= 0;
-  optimize_started= 0;
   item= 0;
   union_result= 0;
   table= 0;
   fake_select_lex= 0;
   saved_fake_select_lex= 0;
-  cleaned= 0;
   item_list.empty();
-  describe= 0;
   found_rows_for_union= 0;
   derived= 0;
-  is_view= false;
   with_clause= 0;
   with_element= 0;
-  columns_are_renamed= false;
-  with_wrapped_tvc= false;
-  have_except_all_or_intersect_all= false;
+
+  /* reset all bit fields */
+  prepared= 0;
+  optimized= 0;
+  optimized_2= 0;
+  executed= 0;
+  cleaned= 0;
+  bag_set_op_optimized= 0;
+  optimize_started= 0;
+  have_except_all_or_intersect_all= 0;
+  with_wrapped_tvc= 0;
+  is_view= 0;
+  describe= 0;
+  columns_are_renamed= 0;
 }
 
 void st_select_lex::init_query()
@@ -2927,14 +2936,39 @@ void st_select_lex::init_query()
   leaf_tables_prep.empty();
   leaf_tables.empty();
   item_list.empty();
+  fix_after_optimize.empty();
   min_max_opt_list.empty();
+  limit_params.clear();
   join= 0;
   having= prep_having= where= prep_where= 0;
   cond_pushed_into_where= cond_pushed_into_having= 0;
   attach_to_conds.empty();
   olap= UNSPECIFIED_OLAP_TYPE;
+
+  /* reset all bit fields */
+  is_item_list_lookup= 0;
+  have_merged_subqueries= 0;
+  is_set_query_expr_tail= 0;
+  with_sum_func= with_rownum= 0;
+  braces= 0;
+  automatic_brackets= 0;
   having_fix_field= 0;
   having_fix_field_for_pushed_cond= 0;
+  subquery_in_having= 0;
+  is_item_list_lookup= 0;
+  with_all_modifier= 0;
+  is_correlated= 0;
+  first_natural_join_processing= 1;
+  first_cond_optimization= 1;
+  no_wrap_view_item= 0;
+  exclude_from_table_unique_test= 0;
+  in_tvc= 0;
+  skip_locked= 0;
+  m_non_agg_field_used= 0;
+  m_agg_func_used= 0;
+  m_custom_agg_func_used= 0;
+  is_service_select= 0;
+
   context.select_lex= this;
   context.init();
   cond_count= between_count= with_wild= 0;
@@ -2947,29 +2981,18 @@ void st_select_lex::init_query()
   n_child_sum_items= 0;
   hidden_bit_fields= 0;
   fields_in_window_functions= 0;
-  subquery_in_having= 0;
-  is_item_list_lookup= 0;
   changed_elements= 0;
-  first_natural_join_processing= 1;
-  first_cond_optimization= 1;
-  is_service_select= 0;
   parsing_place= NO_MATTER;
   save_parsing_place= NO_MATTER;
   context_analysis_place= NO_MATTER;
-  exclude_from_table_unique_test= no_wrap_view_item= FALSE;
   nest_level= 0;
   link_next= 0;
   prep_leaf_list_state= UNINIT;
-  have_merged_subqueries= FALSE;
   bzero((char*) expr_cache_may_be_used, sizeof(expr_cache_may_be_used));
   select_list_tables= 0;
-  m_non_agg_field_used= false;
-  m_agg_func_used= false;
-  m_custom_agg_func_used= false;
   window_specs.empty();
   window_funcs.empty();
   tvc= 0;
-  in_tvc= false;
   versioned_tables= 0;
   pushdown_select= 0;
 }
@@ -2984,6 +3007,8 @@ void st_select_lex::init_select()
   type= 0;
   db= null_clex_str;
   having= 0;
+  table_join_options= 0;
+  select_lock= select_lock_type::NONE;
   in_sum_expr= with_wild= 0;
   options= 0;
   ftfunc_list_alloc.empty();
@@ -2992,20 +3017,23 @@ void st_select_lex::init_select()
   order_list.empty();
   /* Set limit and offset to default values */
   limit_params.clear();
-  is_set_query_expr_tail= false;
-  select_lock= select_lock_type::NONE;
-  skip_locked= false;
+
+  /* Reset bit fields */
+  is_set_query_expr_tail= 0;
   with_sum_func= 0;
   with_all_modifier= 0;
   is_correlated= 0;
+  in_tvc= 0;
+  skip_locked= 0;
+  m_non_agg_field_used= 0;
+  m_agg_func_used= 0;
+  m_custom_agg_func_used= 0;
+
   cur_pos_in_select_list= UNDEF_POS;
   cond_value= having_value= Item::COND_UNDEF;
   inner_refs_list.empty();
   insert_tables= 0;
   merged_into= 0;
-  m_non_agg_field_used= false;
-  m_agg_func_used= false;
-  m_custom_agg_func_used= false;
   name_visibility_map.clear_all();
   with_dep= 0;
   join= 0;
@@ -3015,7 +3043,6 @@ void st_select_lex::init_select()
   tvc= 0;
   in_funcs.empty();
   curr_tvc_name= 0;
-  in_tvc= false;
   versioned_tables= 0;
   nest_flags= 0;
 }
@@ -3934,9 +3961,10 @@ void Query_tables_list::destroy_query_tables_list()
 */
 
 LEX::LEX()
-  : explain(NULL), result(0), part_info(NULL), arena_for_set_stmt(0), mem_root_for_set_stmt(0),
-    json_table(NULL), option_type(OPT_DEFAULT), context_analysis_only(0), sphead(0),
-    default_used(0), is_lex_started(0), limit_rows_examined_cnt(ULONGLONG_MAX)
+  : explain(NULL), result(0), part_info(NULL), arena_for_set_stmt(0),
+    mem_root_for_set_stmt(0), json_table(NULL), default_used(0),
+    with_rownum(0), is_lex_started(0), option_type(OPT_DEFAULT),
+    context_analysis_only(0), sphead(0), limit_rows_examined_cnt(ULONGLONG_MAX)
 {
 
   init_dynamic_array2(PSI_INSTRUMENT_ME, &plugins, sizeof(plugin_ref),
@@ -4049,6 +4077,10 @@ bool LEX::can_use_merged()
   SYNOPSIS
     LEX::can_not_use_merged()
 
+  @param no_update_or_delete Set to 1 if we can't use merge with multiple-table
+                             updates, like when used from
+                             TALE_LIST::init_derived()
+
   DESCRIPTION
     Temporary table algorithm will be used on all SELECT levels for queries
     listed here (see also LEX::can_use_merged()).
@@ -4058,10 +4090,9 @@ bool LEX::can_use_merged()
     TRUE  - VIEWs with MERGE algorithms can be used
 */
 
-bool LEX::can_not_use_merged()
+bool LEX::can_not_use_merged(bool no_update_or_delete)
 {
-  switch (sql_command)
-  {
+  switch (sql_command) {
   case SQLCOM_CREATE_VIEW:
   case SQLCOM_SHOW_CREATE:
   /*
@@ -4071,6 +4102,13 @@ bool LEX::can_not_use_merged()
   */
   case SQLCOM_SHOW_FIELDS:
     return TRUE;
+
+  case SQLCOM_UPDATE_MULTI:
+  case SQLCOM_DELETE_MULTI:
+    if (no_update_or_delete)
+      return TRUE;
+    /* Fall through */
+
   default:
     return FALSE;
   }
@@ -4202,6 +4240,13 @@ void st_select_lex_unit::set_limit(st_select_lex *sl)
   DBUG_ASSERT(!thd->stmt_arena->is_stmt_prepare());
 
   lim.set_limit(sl->get_limit(), sl->get_offset(), sl->limit_params.with_ties);
+}
+
+void st_select_lex_unit::set_limit_if_lower(ha_rows limit)
+{
+  DBUG_ASSERT(!thd->stmt_arena->is_stmt_prepare());
+
+  lim.set_limit_if_lower(limit);
 }
 
 
@@ -4828,7 +4873,7 @@ bool st_select_lex::optimize_unflattened_subqueries(bool const_only)
 
     if (subquery_predicate)
     {
-      if (!subquery_predicate->fixed)
+      if (!subquery_predicate->fixed())
       {
         /*
          This subquery was excluded as part of some expression so it is
@@ -9304,6 +9349,26 @@ Item *LEX::make_item_func_substr(THD *thd, Item *a, Item *b)
 }
 
 
+Item *LEX::make_item_func_sysdate(THD *thd, uint fsp)
+{
+  /*
+    Unlike other time-related functions, SYSDATE() is
+    replication-unsafe because it is not affected by the
+    TIMESTAMP variable.  It is unsafe even if
+    sysdate_is_now=1, because the slave may have
+    sysdate_is_now=0.
+  */
+  set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_SYSTEM_FUNCTION);
+  Item *item= global_system_variables.sysdate_is_now == 0 ?
+              (Item *) new (thd->mem_root) Item_func_sysdate_local(thd, fsp) :
+              (Item *) new (thd->mem_root) Item_func_now_local(thd, fsp);
+  if (unlikely(item == NULL))
+    return NULL;
+  safe_to_cache_query=0;
+  return item;
+}
+
+
 Item *LEX::make_item_func_replace(THD *thd,
                                   Item *org,
                                   Item *find,
@@ -9780,7 +9845,13 @@ void Lex_select_lock::set_to(SELECT_LEX *sel)
     }
   }
   else
+  {
+    /*
+      select_lock can be FOR_UPDATE in case of
+      (SELECT x FROM t WINDOW w1 AS () FOR UPDATE) LIMIT 1
+    */
     sel->select_lock= st_select_lex::select_lock_type::NONE;
+  }
 }
 
 bool Lex_order_limit_lock::set_to(SELECT_LEX *sel)
@@ -10270,7 +10341,6 @@ bool LEX::parsed_create_view(SELECT_LEX_UNIT *unit, int check)
 bool LEX::select_finalize(st_select_lex_unit *expr)
 {
   sql_command= SQLCOM_SELECT;
-  selects_allow_into= TRUE;
   selects_allow_procedure= TRUE;
   if (set_main_unit(expr))
     return true;

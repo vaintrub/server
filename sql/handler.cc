@@ -136,11 +136,18 @@ static const LEX_CSTRING sys_table_aliases[]=
   {NullS, 0}
 };
 
-const char *ha_row_type[] = {
-  "", "FIXED", "DYNAMIC", "COMPRESSED", "REDUNDANT", "COMPACT", "PAGE"
+const LEX_CSTRING ha_row_type[]=
+{
+  { STRING_WITH_LEN("") },
+  { STRING_WITH_LEN("FIXED") },
+  { STRING_WITH_LEN("DYNAMIC") },
+  { STRING_WITH_LEN("COMPRESSED") },
+  { STRING_WITH_LEN("REDUNDANT") },
+  { STRING_WITH_LEN("COMPACT") },
+  { STRING_WITH_LEN("PAGE") }
 };
 
-const char *tx_isolation_names[] =
+const char *tx_isolation_names[]=
 { "READ-UNCOMMITTED", "READ-COMMITTED", "REPEATABLE-READ", "SERIALIZABLE",
   NullS};
 TYPELIB tx_isolation_typelib= {array_elements(tx_isolation_names)-1,"",
@@ -559,7 +566,13 @@ static int hton_drop_table(handlerton *hton, const char *path)
   char tmp_path[FN_REFLEN];
   handler *file= get_new_handler(nullptr, current_thd->mem_root, hton);
   if (!file)
-    return ENOMEM;
+  {
+    /*
+      If file is not defined it means that the engine can't create a
+      handler if share is not set or we got an out of memory error
+    */
+    return my_errno == ENOMEM ? ENOMEM : ENOENT;
+  }
   path= get_canonical_filename(file, path, tmp_path);
   int error= file->delete_table(path);
   delete file;
@@ -826,9 +839,10 @@ static my_bool dropdb_handlerton(THD *unused1, plugin_ref plugin,
 }
 
 
-void ha_drop_database(char* path)
+void ha_drop_database(const char* path)
 {
-  plugin_foreach(NULL, dropdb_handlerton, MYSQL_STORAGE_ENGINE_PLUGIN, path);
+  plugin_foreach(NULL, dropdb_handlerton, MYSQL_STORAGE_ENGINE_PLUGIN,
+                 (char*) path);
 }
 
 
@@ -929,6 +943,24 @@ void ha_kill_query(THD* thd, enum thd_kill_levels level)
 }
 
 
+static my_bool signal_ddl_recovery_done(THD *, plugin_ref plugin, void *)
+{
+  handlerton *hton= plugin_hton(plugin);
+  if (hton->signal_ddl_recovery_done)
+    (hton->signal_ddl_recovery_done)(hton);
+  return 0;
+}
+
+
+void ha_signal_ddl_recovery_done()
+{
+  DBUG_ENTER("ha_signal_ddl_recovery_done");
+  plugin_foreach(NULL, signal_ddl_recovery_done, MYSQL_STORAGE_ENGINE_PLUGIN,
+                 NULL);
+  DBUG_VOID_RETURN;
+}
+
+
 /*****************************************************************************
   Backup functions
 ******************************************************************************/
@@ -965,6 +997,27 @@ void ha_end_backup()
                            PLUGIN_IS_DELETED|PLUGIN_IS_READY, 0);
 }
 
+void handler::log_not_redoable_operation(const char *operation)
+{
+  DBUG_ENTER("log_not_redoable_operation");
+  if (table->s->tmp_table == NO_TMP_TABLE)
+  {
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    lex_string_set(&ddl_log.query, operation);
+    /*
+      We can't use partition_engine() here as this function is called
+      directly by the handler for the underlaying partition table
+    */
+    ddl_log.org_partitioned= table->s->partition_info_str != 0;
+    lex_string_set(&ddl_log.org_storage_engine_name, table_type());
+    ddl_log.org_database=     table->s->db;
+    ddl_log.org_table=        table->s->table_name;
+    ddl_log.org_table_id=     table->s->tabledef_version;
+    backup_log_ddl(&ddl_log);
+  }
+  DBUG_VOID_RETURN;
+}
 
 /*
   Inform plugin of the server shutdown.
@@ -2396,7 +2449,7 @@ int ha_recover(HASH *commit_list)
     DBUG_RETURN(0);
 
   if (info.commit_list)
-    sql_print_information("Starting crash recovery...");
+    sql_print_information("Starting table crash recovery...");
 
   for (info.len= MAX_XID_LIST_SIZE ; 
        info.list==0 && info.len > MIN_XID_LIST_SIZE; info.len/=2)
@@ -2430,7 +2483,7 @@ int ha_recover(HASH *commit_list)
     DBUG_RETURN(1);
   }
   if (info.commit_list)
-    sql_print_information("Crash recovery finished.");
+    sql_print_information("Crash table recovery finished.");
   DBUG_RETURN(0);
 }
 
@@ -2720,7 +2773,7 @@ const char *get_canonical_filename(handler *file, const char *path,
                                    char *tmp_path)
 {
   uint i;
-  if (lower_case_table_names != 2 || (file->ha_table_flags() & HA_FILE_BASED))
+  if (!file->needs_lower_case_filenames())
     return path;
 
   for (i= 0; i <= mysql_tmpdir_list.max; i++)
@@ -4117,7 +4170,9 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_LOCK_DEADLOCK:
   {
-    String str, full_err_msg(ER_DEFAULT(ER_LOCK_DEADLOCK), system_charset_info);
+    String str, full_err_msg(ER_DEFAULT(ER_LOCK_DEADLOCK),
+                             strlen(ER_DEFAULT(ER_LOCK_DEADLOCK)),
+                             system_charset_info);
 
     get_error_message(error, &str);
     full_err_msg.append(str);
@@ -4547,6 +4602,7 @@ bool non_existing_table_error(int error)
 {
   return (error == ENOENT ||
           (error == EE_DELETE && my_errno == ENOENT) ||
+          error == EE_FILENOTFOUND ||
           error == HA_ERR_NO_SUCH_TABLE ||
           error == HA_ERR_UNSUPPORTED ||
           error == ER_NO_SUCH_TABLE ||
@@ -4937,19 +4993,9 @@ Alter_inplace_info::Alter_inplace_info(HA_CREATE_INFO *create_info_arg,
     alter_info(alter_info_arg),
     key_info_buffer(key_info_arg),
     key_count(key_count_arg),
-    index_drop_count(0),
-    index_drop_buffer(nullptr),
-    index_add_count(0),
-    index_add_buffer(nullptr),
-    index_altered_ignorability_count(0),
     rename_keys(current_thd->mem_root),
-    handler_ctx(nullptr),
-    group_commit_ctx(nullptr),
-    handler_flags(0),
     modified_part_info(modified_part_info_arg),
     ignore(ignore_arg),
-    online(false),
-    unsupported_reason(nullptr),
     error_if_not_empty(error_non_empty)
   {}
 
@@ -5534,8 +5580,9 @@ int ha_create_table(THD *thd, const char *path,
 
   if (frm)
   {
-    bool write_frm_now= !create_info->db_type->discover_table &&
-                        !create_info->tmp_table();
+    bool write_frm_now= (!create_info->db_type->discover_table &&
+                         !create_info->tmp_table() &&
+                         !create_info->frm_is_created);
 
     share.frm_image= frm;
 
@@ -5831,7 +5878,8 @@ static my_bool discover_existence(THD *thd, plugin_ref plugin,
 */
 
 bool ha_table_exists(THD *thd, const LEX_CSTRING *db,
-                     const LEX_CSTRING *table_name,
+                     const LEX_CSTRING *table_name, LEX_CUSTRING *table_id,
+                     LEX_CSTRING *partition_engine_name,
                      handlerton **hton, bool *is_sequence)
 {
   handlerton *dummy;
@@ -5845,17 +5893,42 @@ bool ha_table_exists(THD *thd, const LEX_CSTRING *db,
   if (!is_sequence)
     is_sequence= &dummy2;
   *is_sequence= 0;
+  if (table_id)
+  {
+    table_id->str= 0;
+    table_id->length= 0;
+  }
 
   TDC_element *element= tdc_lock_share(thd, db->str, table_name->str);
   if (element && element != MY_ERRPTR)
   {
-    if (hton)
-      *hton= element->share->db_type();
+    if (!hton)
+      hton= &dummy;
+    *hton= element->share->db_type();
+    if (partition_engine_name && element->share->db_type() == partition_hton)
+    {
+      if (!static_cast<Partition_share *>(element->share->ha_share)->
+          partition_engine_name)
+      {
+        /* Partition engine found, but table has never been opened */
+        tdc_unlock_share(element);
+        goto retry_from_frm;
+      }
+      lex_string_set(partition_engine_name,
+        static_cast<Partition_share *>(element->share->ha_share)->
+          partition_engine_name);
+    }
     *is_sequence= element->share->table_type == TABLE_TYPE_SEQUENCE;
+    if (*hton != view_pseudo_hton && element->share->tabledef_version.length &&
+        table_id &&
+        (table_id->str= (uchar*)
+         thd->memdup(element->share->tabledef_version.str, MY_UUID_SIZE)))
+      table_id->length= MY_UUID_SIZE;
     tdc_unlock_share(element);
     DBUG_RETURN(TRUE);
   }
 
+retry_from_frm:
   char path[FN_REFLEN + 1];
   size_t path_len = build_table_filename(path, sizeof(path) - 1,
                                          db->str, table_name->str, "", 0);
@@ -5868,7 +5941,9 @@ bool ha_table_exists(THD *thd, const LEX_CSTRING *db,
     {
       char engine_buf[NAME_CHAR_LEN + 1];
       LEX_CSTRING engine= { engine_buf, 0 };
-      Table_type type= dd_frm_type(thd, path, &engine);
+      Table_type type= dd_frm_type(thd, path, &engine,
+                                   partition_engine_name,
+                                   table_id);
 
       switch (type) {
       case TABLE_TYPE_UNKNOWN:
@@ -5923,6 +5998,10 @@ bool ha_table_exists(THD *thd, const LEX_CSTRING *db,
     if (hton && share)
     {
       *hton= share->db_type();
+      if (table_id && share->tabledef_version.length &&
+          (table_id->str=
+           (uchar*) thd->memdup(share->tabledef_version.str, MY_UUID_SIZE)))
+        table_id->length= MY_UUID_SIZE;
       tdc_release_share(share);
     }
 
@@ -7699,8 +7778,8 @@ bool HA_CREATE_INFO::check_conflicting_charset_declarations(CHARSET_INFO *cs)
   {
     my_error(ER_CONFLICTING_DECLARATIONS, MYF(0),
              "CHARACTER SET ", default_table_charset ?
-                               default_table_charset->csname : "DEFAULT",
-             "CHARACTER SET ", cs ? cs->csname : "DEFAULT");
+                               default_table_charset->cs_name.str : "DEFAULT",
+             "CHARACTER SET ", cs ? cs->cs_name.str : "DEFAULT");
     return true;
   }
   return false;

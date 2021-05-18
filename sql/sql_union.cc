@@ -1083,8 +1083,9 @@ bool st_select_lex_unit::prepare_join(THD *thd_arg, SELECT_LEX *sl,
 
   thd_arg->lex->current_select= sl;
 
-  can_skip_order_by= is_union_select && !(sl->braces &&
-                                          sl->limit_params.explicit_limit);
+  can_skip_order_by= (is_union_select && !(sl->braces &&
+                                           sl->limit_params.explicit_limit) &&
+                      !thd->lex->with_rownum);
 
   saved_error= join->prepare(sl->table_list.first,
                              (derived && derived->merged ? NULL : sl->where),
@@ -1184,11 +1185,11 @@ bool st_select_lex_unit::join_union_type_attributes(THD *thd_arg,
         been fixed yet. An Item_type_holder must be created based on a fixed
         Item, so use the inner Item instead.
       */
-      DBUG_ASSERT(item_tmp->is_fixed() ||
+      DBUG_ASSERT(item_tmp->fixed() ||
                   (item_tmp->type() == Item::REF_ITEM &&
                    ((Item_ref *)(item_tmp))->ref_type() ==
                    Item_ref::OUTER_REF));
-      if (!item_tmp->is_fixed())
+      if (!item_tmp->fixed())
         item_tmp= item_tmp->real_item();
       holders[holder_pos].add_argument(item_tmp);
     }

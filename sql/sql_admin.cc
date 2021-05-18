@@ -32,6 +32,14 @@
 #include "sql_admin.h"
 #include "sql_statistics.h"
 #include "wsrep_mysqld.h"
+
+const LEX_CSTRING msg_repair= { STRING_WITH_LEN("repair") };
+const LEX_CSTRING msg_assign_to_keycache= { STRING_WITH_LEN("assign_to_keycache") };
+const LEX_CSTRING msg_analyze= { STRING_WITH_LEN("analyze") };
+const LEX_CSTRING msg_check= { STRING_WITH_LEN("check") };
+const LEX_CSTRING msg_preload_keys= { STRING_WITH_LEN("preload_keys") };
+const LEX_CSTRING msg_optimize= { STRING_WITH_LEN("optimize") };
+
 /* Prepare, run and cleanup for mysql_recreate_table() */
 
 static bool admin_recreate_table(THD *thd, TABLE_LIST *table_list)
@@ -71,15 +79,16 @@ static bool admin_recreate_table(THD *thd, TABLE_LIST *table_list)
 
 
 static int send_check_errmsg(THD *thd, TABLE_LIST* table,
-			     const char* operator_name, const char* errmsg)
+			     const LEX_CSTRING *operator_name,
+                             const char* errmsg)
 
 {
   Protocol *protocol= thd->protocol;
   protocol->prepare_for_resend();
   protocol->store(table->alias.str, table->alias.length, system_charset_info);
-  protocol->store((char*) operator_name, system_charset_info);
-  protocol->store(STRING_WITH_LEN("error"), system_charset_info);
-  protocol->store(errmsg, system_charset_info);
+  protocol->store(operator_name, system_charset_info);
+  protocol->store(&error_clex_str, system_charset_info);
+  protocol->store(errmsg, strlen(errmsg), system_charset_info);
   thd->clear_error();
   if (protocol->write())
     return -1;
@@ -148,7 +157,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   */
   if (table->s->tmp_table)
   {
-    error= send_check_errmsg(thd, table_list, "repair",
+    error= send_check_errmsg(thd, table_list, &msg_repair,
 			     "Cannot repair temporary table from .frm file");
     goto end;
   }
@@ -166,7 +175,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   if (table->s->frm_version < FRM_VER_TRUE_VARCHAR &&
       table->s->varchar_fields)
   {
-    error= send_check_errmsg(thd, table_list, "repair",
+    error= send_check_errmsg(thd, table_list, &msg_repair,
                              "Failed repairing a very old .frm file as the data file format has changed between versions. Please dump the table in your old system with mysqldump and read it into this system with mysql or mysqlimport");
     goto end;
   }
@@ -225,12 +234,12 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
 
   if (my_rename(from, tmp, MYF(MY_WME)))
   {
-    error= send_check_errmsg(thd, table_list, "repair",
+    error= send_check_errmsg(thd, table_list, &msg_repair,
 			     "Failed renaming data file");
     goto end;
   }
   if (dd_recreate_table(thd, table_list->db.str, table_list->table_name.str))
-    create_error= send_check_errmsg(thd, table_list, "repair",
+    create_error= send_check_errmsg(thd, table_list, &msg_repair,
                                     "Failed generating table from .frm file");
   /*
     'FALSE' for 'using_transactions' means don't postpone
@@ -240,7 +249,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
   query_cache_invalidate3(thd, table_list, FALSE);
   if (mysql_file_rename(key_file_misc, tmp, from, MYF(MY_WME)))
   {
-    error= send_check_errmsg(thd, table_list, "repair",
+    error= send_check_errmsg(thd, table_list, &msg_repair,
 			     "Failed restoring .MYD file");
     goto end;
   }
@@ -262,7 +271,7 @@ static int prepare_for_repair(THD *thd, TABLE_LIST *table_list,
     */
     if (open_table(thd, table_list, &ot_ctx))
     {
-      error= send_check_errmsg(thd, table_list, "repair",
+      error= send_check_errmsg(thd, table_list, &msg_repair,
                                "Failed to open partially repaired table");
       goto end;
     }
@@ -480,7 +489,7 @@ static bool wsrep_toi_replication(THD *thd, TABLE_LIST *tables)
 */
 static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
                               HA_CHECK_OPT* check_opt,
-                              const char *operator_name,
+                              const LEX_CSTRING *operator_name,
                               thr_lock_type lock_type,
                               bool org_open_for_modify,
                               bool repair_table_use_frm,
@@ -503,6 +512,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   bool need_repair_or_alter= 0;
   wait_for_commit* suspended_wfc;
   bool is_table_modified= false;
+  LEX_CUSTRING tabledef_version;
 
   DBUG_ENTER("mysql_admin_table");
   DBUG_PRINT("enter", ("extra_open_options: %u", extra_open_options));
@@ -510,18 +520,18 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
   field_list.push_back(item= new (thd->mem_root)
                        Item_empty_string(thd, "Table",
                                          NAME_CHAR_LEN * 2), thd->mem_root);
-  item->maybe_null = 1;
+  item->set_maybe_null();
   field_list.push_back(item= new (thd->mem_root)
                        Item_empty_string(thd, "Op", 10), thd->mem_root);
-  item->maybe_null = 1;
+  item->set_maybe_null();
   field_list.push_back(item= new (thd->mem_root)
                        Item_empty_string(thd, "Msg_type", 10), thd->mem_root);
-  item->maybe_null = 1;
+  item->set_maybe_null();
   field_list.push_back(item= new (thd->mem_root)
                        Item_empty_string(thd, "Msg_text",
                                          SQL_ADMIN_MSG_TEXT_SIZE),
                        thd->mem_root);
-  item->maybe_null = 1;
+  item->set_maybe_null();
   if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
@@ -555,19 +565,26 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
 
   for (table= tables; table; table= table->next_local)
   {
-    char table_name[SAFE_NAME_LEN*2+2];
+    char table_name_buff[SAFE_NAME_LEN*2+2];
+    LEX_CSTRING table_name= { table_name_buff, 0};
+    char storage_engine_name[NAME_LEN];
+    bool storage_engine_partitioned= 0;
+    uchar tabledef_version_buff[MY_UUID_SIZE];
     const char *db= table->db.str;
     bool fatal_error=0;
     bool open_error;
     bool collect_eis=  FALSE;
     bool open_for_modify= org_open_for_modify;
 
+    storage_engine_name[0]= 0;                  // Marker that's not used
+
     DBUG_PRINT("admin", ("table: '%s'.'%s'", db, table->table_name.str));
     DEBUG_SYNC(thd, "admin_command_kill_before_modify");
 
     if (thd->is_killed())
       break;
-    strxmov(table_name, db, ".", table->table_name.str, NullS);
+    table_name.length= strxmov(table_name_buff, db, ".", table->table_name.str,
+                               NullS) - table_name_buff;
     thd->open_options|= extra_open_options;
     table->lock_type= lock_type;
     /*
@@ -645,12 +662,12 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
             size_t length;
             DBUG_PRINT("admin", ("sending non existent partition error"));
             protocol->prepare_for_resend();
-            protocol->store(table_name, system_charset_info);
+            protocol->store(&table_name, system_charset_info);
             protocol->store(operator_name, system_charset_info);
-            protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+            protocol->store(&error_clex_str, system_charset_info);
             length= my_snprintf(buff, sizeof(buff),
                                 ER_THD(thd, ER_DROP_PARTITION_NON_EXISTENT),
-                                table_name);
+                                table_name.str);
             protocol->store(buff, length, system_charset_info);
             if(protocol->write())
               goto err;
@@ -734,11 +751,11 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       enum_sql_command save_sql_command= lex->sql_command;
       DBUG_PRINT("admin", ("sending error message"));
       protocol->prepare_for_resend();
-      protocol->store(table_name, system_charset_info);
+      protocol->store(&table_name, system_charset_info);
       protocol->store(operator_name, system_charset_info);
-      protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+      protocol->store(&error_clex_str, system_charset_info);
       length= my_snprintf(buff, sizeof(buff), ER_THD(thd, ER_OPEN_AS_READONLY),
-                          table_name);
+                          table_name.str);
       protocol->store(buff, length, system_charset_info);
       trans_commit_stmt(thd);
       trans_commit(thd);
@@ -776,6 +793,16 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
         thd->close_unused_temporary_table_instances(tables);
       else
       {
+        /* Store information about table for ddl log */
+        storage_engine_partitioned= table->table->file->partition_engine();
+        strmake(storage_engine_name, table->table->file->real_table_type(),
+                sizeof(storage_engine_name)-1);
+        tabledef_version.str= tabledef_version_buff;
+        if ((tabledef_version.length= table->table->s->tabledef_version.length))
+          memcpy((char*) tabledef_version.str,
+                 table->table->s->tabledef_version.str,
+                 MY_UUID_SIZE);
+
         if (wait_while_table_is_used(thd, table->table, HA_EXTRA_NOT_USED))
           goto err;
         DEBUG_SYNC(thd, "after_admin_flush");
@@ -794,7 +821,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       /* purecov: begin inspected */
       DBUG_PRINT("admin", ("sending crashed warning"));
       protocol->prepare_for_resend();
-      protocol->store(table_name, system_charset_info);
+      protocol->store(&table_name, system_charset_info);
       protocol->store(operator_name, system_charset_info);
       protocol->store(STRING_WITH_LEN("warning"), system_charset_info);
       protocol->store(STRING_WITH_LEN("Table is marked as crashed"),
@@ -856,7 +883,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
 
     if (result_code == HA_ADMIN_OK)
     {    
-      DBUG_PRINT("admin", ("calling operator_func '%s'", operator_name));
+      DBUG_PRINT("admin", ("calling operator_func '%s'", operator_name->str));
       THD_STAGE_INFO(thd, stage_executing);
       result_code = (table->table->file->*operator_func)(thd, check_opt);
       THD_STAGE_INFO(thd, stage_sending_data);
@@ -972,7 +999,7 @@ static bool mysql_admin_table(THD* thd, TABLE_LIST* tables,
       else
       {
         protocol->prepare_for_resend();
-        protocol->store(table_name, system_charset_info); 
+        protocol->store(&table_name, system_charset_info);
         protocol->store(operator_name, system_charset_info);
         protocol->store(STRING_WITH_LEN("status"), system_charset_info);
 	protocol->store(STRING_WITH_LEN("Engine-independent statistics collected"), 
@@ -1000,20 +1027,21 @@ send_result:
       const Sql_condition *err;
       while ((err= it++))
       {
+        const char *err_msg= err->get_message_text();
         protocol->prepare_for_resend();
-        protocol->store(table_name, system_charset_info);
-        protocol->store((char*) operator_name, system_charset_info);
+        protocol->store(&table_name, system_charset_info);
+        protocol->store(operator_name, system_charset_info);
         protocol->store(warning_level_names[err->get_level()].str,
                         warning_level_names[err->get_level()].length,
                         system_charset_info);
-        protocol->store(err->get_message_text(), system_charset_info);
+        protocol->store(err_msg, strlen(err_msg), system_charset_info);
         if (protocol->write())
           goto err;
       }
       thd->get_stmt_da()->clear_warning_info(thd->query_id);
     }
     protocol->prepare_for_resend();
-    protocol->store(table_name, system_charset_info);
+    protocol->store(&table_name, system_charset_info);
     protocol->store(operator_name, system_charset_info);
 
 send_result_message:
@@ -1025,7 +1053,7 @@ send_result_message:
        char buf[MYSQL_ERRMSG_SIZE];
        size_t length=my_snprintf(buf, sizeof(buf),
                                  ER_THD(thd, ER_CHECK_NOT_IMPLEMENTED),
-                                 operator_name);
+                                 operator_name->str);
 	protocol->store(STRING_WITH_LEN("note"), system_charset_info);
 	protocol->store(buf, length, system_charset_info);
       }
@@ -1036,7 +1064,7 @@ send_result_message:
         char buf[MYSQL_ERRMSG_SIZE];
         size_t length= my_snprintf(buf, sizeof(buf),
                                    ER_THD(thd, ER_BAD_TABLE_ERROR),
-                                   table_name);
+                                   table_name.str);
         protocol->store(STRING_WITH_LEN("note"), system_charset_info);
         protocol->store(buf, length, system_charset_info);
       }
@@ -1067,13 +1095,13 @@ send_result_message:
       break;
 
     case HA_ADMIN_CORRUPT:
-      protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+      protocol->store(&error_clex_str, system_charset_info);
       protocol->store(STRING_WITH_LEN("Corrupt"), system_charset_info);
       fatal_error=1;
       break;
 
     case HA_ADMIN_INVALID:
-      protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+      protocol->store(&error_clex_str, system_charset_info);
       protocol->store(STRING_WITH_LEN("Invalid argument"),
                       system_charset_info);
       break;
@@ -1141,7 +1169,7 @@ send_result_message:
       }
       /* Start a new row for the final status row */
       protocol->prepare_for_resend();
-      protocol->store(table_name, system_charset_info);
+      protocol->store(&table_name, system_charset_info);
       protocol->store(operator_name, system_charset_info);
       if (result_code) // either mysql_recreate_table or analyze failed
       {
@@ -1156,13 +1184,13 @@ send_result_message:
           else
           {
             /* Hijack the row already in-progress. */
-            protocol->store(STRING_WITH_LEN("error"), system_charset_info);
-            protocol->store(err_msg, system_charset_info);
+            protocol->store(&error_clex_str, system_charset_info);
+            protocol->store(err_msg, strlen(err_msg), system_charset_info);
             if (protocol->write())
               goto err;
             /* Start off another row for HA_ADMIN_FAILED */
             protocol->prepare_for_resend();
-            protocol->store(table_name, system_charset_info);
+            protocol->store(&table_name, system_charset_info);
             protocol->store(operator_name, system_charset_info);
           }
           thd->clear_error();
@@ -1193,7 +1221,7 @@ send_result_message:
       const char *what_to_upgrade= table->view ? "VIEW" :
           table->table->file->ha_table_flags() & HA_CAN_REPAIR ? "TABLE" : 0;
 
-      protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+      protocol->store(&error_clex_str, system_charset_info);
       if (what_to_upgrade)
         length= my_snprintf(buf, sizeof(buf),
                             ER_THD(thd, ER_TABLE_NEEDS_UPGRADE),
@@ -1213,12 +1241,13 @@ send_result_message:
         size_t length=my_snprintf(buf, sizeof(buf),
                                 "Unknown - internal error %d during operation",
                                 result_code);
-        protocol->store(STRING_WITH_LEN("error"), system_charset_info);
+        protocol->store(&error_clex_str, system_charset_info);
         protocol->store(buf, length, system_charset_info);
         fatal_error=1;
         break;
       }
     }
+
     /*
       Admin commands acquire table locks and these locks are not detected by
       parallel replication deadlock detection-and-handling mechanism. Hence
@@ -1226,6 +1255,7 @@ send_result_message:
       with conflicting DMLs resulting in deadlock.
     */
     thd->transaction->stmt.mark_executed_table_admin_cmd();
+
     if (table->table && !table->view)
     {
       /*
@@ -1272,6 +1302,22 @@ send_result_message:
       is_table_modified= true;
     }
     close_thread_tables(thd);
+
+    if (storage_engine_name[0])
+    {
+      /* Table was changed (repair, optimize or something similar) */
+      backup_log_info ddl_log;
+      bzero(&ddl_log, sizeof(ddl_log));
+      lex_string_set(&ddl_log.org_storage_engine_name,
+                     storage_engine_name);
+      ddl_log.query=            *operator_name;
+      ddl_log.org_partitioned=  storage_engine_partitioned;
+      ddl_log.org_database=     table->db;
+      ddl_log.org_table=        table->table_name;
+      ddl_log.org_table_id=     tabledef_version;
+      backup_log_ddl(&ddl_log);
+    }
+
     thd->release_transactional_locks();
 
     /*
@@ -1363,7 +1409,8 @@ bool mysql_assign_to_keycache(THD* thd, TABLE_LIST* tables,
   }
   check_opt.key_cache= key_cache;
   DBUG_RETURN(mysql_admin_table(thd, tables, &check_opt,
-				"assign_to_keycache", TL_READ_NO_INSERT, 0, 0,
+                                &msg_assign_to_keycache,
+                                TL_READ_NO_INSERT, 0, 0,
 				0, 0, &handler::assign_to_keycache, 0, false));
 }
 
@@ -1390,8 +1437,9 @@ bool mysql_preload_keys(THD* thd, TABLE_LIST* tables)
     outdated information if parallel inserts into cache blocks happen.
   */
   DBUG_RETURN(mysql_admin_table(thd, tables, 0,
-				"preload_keys", TL_READ_NO_INSERT, 0, 0, 0, 0,
-				&handler::preload_keys, 0, false));
+                                &msg_preload_keys, TL_READ_NO_INSERT,
+                                0, 0, 0, 0,
+                                &handler::preload_keys, 0, false));
 }
 
 
@@ -1411,7 +1459,7 @@ bool Sql_cmd_analyze_table::execute(THD *thd)
 
   WSREP_TO_ISOLATION_BEGIN_WRTCHK(NULL, NULL, first_table);
   res= mysql_admin_table(thd, first_table, &m_lex->check_opt,
-                         "analyze", lock_type, 1, 0, 0, 0,
+                         &msg_analyze, lock_type, 1, 0, 0, 0,
                          &handler::ha_analyze, 0, true);
 
   m_lex->first_select_lex()->table_list.first= first_table;
@@ -1437,7 +1485,7 @@ bool Sql_cmd_check_table::execute(THD *thd)
                          TRUE, UINT_MAX, FALSE))
     goto error; /* purecov: inspected */
 
-  res= mysql_admin_table(thd, first_table, &m_lex->check_opt, "check",
+  res= mysql_admin_table(thd, first_table, &m_lex->check_opt, &msg_check,
                          lock_type, 0, 0, HA_OPEN_FOR_REPAIR, 0,
                          &handler::ha_check, &view_check, false);
 
@@ -1463,7 +1511,7 @@ bool Sql_cmd_optimize_table::execute(THD *thd)
   res= (specialflag & SPECIAL_NO_NEW_FUNC) ?
     mysql_recreate_table(thd, first_table, true) :
     mysql_admin_table(thd, first_table, &m_lex->check_opt,
-                      "optimize", TL_WRITE, 1, 0, 0, 0,
+                      &msg_optimize, TL_WRITE, 1, 0, 0, 0,
                       &handler::ha_optimize, 0, true);
 
   m_lex->first_select_lex()->table_list.first= first_table;
@@ -1484,7 +1532,7 @@ bool Sql_cmd_repair_table::execute(THD *thd)
   if (check_table_access(thd, SELECT_ACL | INSERT_ACL, first_table,
                          FALSE, UINT_MAX, FALSE))
     goto error; /* purecov: inspected */
-  res= mysql_admin_table(thd, first_table, &m_lex->check_opt, "repair",
+  res= mysql_admin_table(thd, first_table, &m_lex->check_opt, &msg_repair,
                          TL_WRITE, 1,
                          MY_TEST(m_lex->check_opt.sql_flags & TT_USEFRM),
                          HA_OPEN_FOR_REPAIR, &prepare_for_repair,

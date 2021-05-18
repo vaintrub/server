@@ -39,7 +39,7 @@
 #include "thr_lock.h"       /* thr_lock_type, THR_LOCK_DATA, THR_LOCK_INFO */
 #include "thr_timer.h"
 #include "thr_malloc.h"
-#include "log_slow.h"      /* LOG_SLOW_DISABLE_... */
+#include "log_slow.h"       /* LOG_SLOW_DISABLE_... */
 #include <my_tree.h>
 #include "sql_digest_stream.h"            // sql_digest_state
 #include <mysql/psi/mysql_stage.h>
@@ -50,6 +50,7 @@
 #include "session_tracker.h"
 #include "backup.h"
 #include "xa.h"
+#include "ddl_log.h"                            /* DDL_LOG_STATE */
 
 extern "C"
 void set_thd_stage_info(void *thd,
@@ -263,10 +264,12 @@ typedef struct st_user_var_events
       was actually changed or not.
 */
 typedef struct st_copy_info {
-  ha_rows records; /**< Number of processed records */
-  ha_rows deleted; /**< Number of deleted records */
-  ha_rows updated; /**< Number of updated records */
-  ha_rows copied;  /**< Number of copied records */
+  ha_rows records;        /**< Number of processed records */
+  ha_rows deleted;        /**< Number of deleted records */
+  ha_rows updated;        /**< Number of updated records */
+  ha_rows copied;         /**< Number of copied records */
+  ha_rows accepted_rows;  /**< Number of accepted original rows
+                             (same as number of rows in RETURNING) */
   ha_rows error_count;
   ha_rows touched; /* Number of touched records */
   enum enum_duplicates handle_duplicates;
@@ -2835,6 +2838,11 @@ public:
 
 #ifndef MYSQL_CLIENT
   binlog_cache_mngr *  binlog_setup_trx_data();
+  /*
+    If set, tell binlog to store the value as query 'xid' in the next
+    Query_log_event
+  */
+  ulonglong binlog_xid;
 
   /*
     Public interface to write RBR events to the binlog
@@ -6013,6 +6021,7 @@ class select_create: public select_insert {
   MYSQL_LOCK **m_plock;
   bool       exit_done;
   TMP_TABLE_SHARE *saved_tmp_table_share;
+  DDL_LOG_STATE ddl_log_state_create, ddl_log_state_rm;
 
 public:
   select_create(THD *thd_arg, TABLE_LIST *table_arg,
@@ -6028,7 +6037,10 @@ public:
     alter_info(alter_info_arg),
     m_plock(NULL), exit_done(0),
     saved_tmp_table_share(0)
-    {}
+    {
+      bzero(&ddl_log_state_create, sizeof(ddl_log_state_create));
+      bzero(&ddl_log_state_rm, sizeof(ddl_log_state_rm));
+    }
   int prepare(List<Item> &list, SELECT_LEX_UNIT *u);
 
   void store_values(List<Item> &values);
@@ -6978,7 +6990,8 @@ public:
   ~my_var_sp() { }
   bool set(THD *thd, Item *val);
   my_var_sp *get_my_var_sp() { return this; }
-  const Type_handler *type_handler() const { return m_type_handler; }
+  const Type_handler *type_handler() const
+  { return m_type_handler; }
   sp_rcontext *get_rcontext(sp_rcontext *local_ctx) const;
 };
 
@@ -7551,10 +7564,10 @@ public:
   ErrConvDQName(const Database_qualified_name *name)
    :m_name(name)
   { }
-  const char *ptr() const
+  LEX_CSTRING lex_cstring() const override
   {
-    m_name->make_qname(err_buffer, sizeof(err_buffer));
-    return err_buffer;
+    size_t length= m_name->make_qname(err_buffer, sizeof(err_buffer));
+    return {err_buffer, length};
   }
 };
 
@@ -7571,10 +7584,10 @@ public:
     m_maybe_null(false)
   { }
 
-  void set_maybe_null(bool maybe_null_arg) { m_maybe_null= maybe_null_arg; }
+  void set_type_maybe_null(bool maybe_null_arg) { m_maybe_null= maybe_null_arg; }
   bool get_maybe_null() const { return m_maybe_null; }
 
-  uint decimal_precision() const
+  decimal_digits_t decimal_precision() const
   {
     /*
       Type_holder is not used directly to create fields, so
@@ -7597,11 +7610,12 @@ public:
 
   bool aggregate_attributes(THD *thd)
   {
+    static LEX_CSTRING union_name= { STRING_WITH_LEN("UNION") };
     for (uint i= 0; i < arg_count; i++)
-      m_maybe_null|= args[i]->maybe_null;
+      m_maybe_null|= args[i]->maybe_null();
     return
        type_handler()->Item_hybrid_func_fix_attributes(thd,
-                                                       "UNION", this, this,
+                                                       union_name, this, this,
                                                        args, arg_count);
   }
 };

@@ -453,15 +453,15 @@ public:
   void print_grant(String *str)
   {
     str->append(STRING_WITH_LEN("GRANT PROXY ON '"));
-    str->append(proxied_user);
+    str->append(proxied_user, strlen(proxied_user));
     str->append(STRING_WITH_LEN("'@'"));
     if (proxied_host.hostname)
       str->append(proxied_host.hostname, strlen(proxied_host.hostname));
     str->append(STRING_WITH_LEN("' TO '"));
-    str->append(user);
+    str->append(user, strlen(user));
     str->append(STRING_WITH_LEN("'@'"));
     if (host.hostname)
-      str->append(host.hostname);
+      str->append(host.hostname, strlen(host.hostname));
     str->append(STRING_WITH_LEN("'"));
     if (with_grant)
       str->append(STRING_WITH_LEN(" WITH GRANT OPTION"));
@@ -1776,7 +1776,7 @@ class User_table_json: public User_table
       if (value_len)
         json.append(',');
       json.append('"');
-      json.append(key);
+      json.append(key, strlen(key));
       json.append(STRING_WITH_LEN("\":"));
       if (string)
         json.append('"');
@@ -6955,7 +6955,7 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
 		      bool revoke_grant)
 {
   privilege_t column_priv(NO_ACL);
-  int result;
+  int result, res;
   List_iterator <LEX_USER> str_list (user_list);
   LEX_USER *Str, *tmp_Str;
   bool create_new_users=0;
@@ -6982,7 +6982,7 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
 
       while ((column = column_iter++))
       {
-        uint unused_field_idx= NO_CACHED_FIELD_INDEX;
+        field_index_t unused_field_idx= NO_CACHED_FIELD_INDEX;
         TABLE_LIST *dummy;
         Field *f=find_field_in_table_ref(thd, table_list, column->column.ptr(),
                                          column->column.length(),
@@ -7156,10 +7156,10 @@ int mysql_table_grant(THD *thd, TABLE_LIST *table_list,
                                revoke_grant))
 	result= TRUE;
     }
-    if (int res= replace_table_table(thd, grant_table,
-                                     tables.tables_priv_table().table(),
-                                     *Str, db_name, table_name,
-                                     rights, column_priv, revoke_grant))
+    if ((res= replace_table_table(thd, grant_table,
+                                  tables.tables_priv_table().table(),
+                                  *Str, db_name, table_name,
+                                  rights, column_priv, revoke_grant)))
     {
       if (res > 0)
       {
@@ -9136,7 +9136,7 @@ bool mysql_show_create_user(THD *thd, LEX_USER *lex_user)
     goto end;
   }
 
-  result.append("CREATE USER ");
+  result.append(STRING_WITH_LEN("CREATE USER "));
   append_identifier(thd, &result, username, strlen(username));
   add_user_parameters(thd, &result, acl_user, false);
 
@@ -9160,9 +9160,10 @@ bool mysql_show_create_user(THD *thd, LEX_USER *lex_user)
    of a user account, including both the manual expiration state of the
    account and the automatic expiration policy attached to it, we should
    print two statements here, a CREATE USER (printed above) and an ALTER USER */
-  if (acl_user->password_expired && acl_user->password_lifetime > -1) {
+  if (acl_user->password_expired && acl_user->password_lifetime > -1)
+  {
     result.length(0);
-    result.append("ALTER USER ");
+    result.append(STRING_WITH_LEN("ALTER USER "));
     append_identifier(thd, &result, username, strlen(username));
     result.append('@');
     append_identifier(thd, &result, acl_user->host.hostname,
@@ -9418,7 +9419,7 @@ static bool show_default_role(THD *thd, ACL_USER *acl_entry,
     def_str.length(0);
     def_str.append(STRING_WITH_LEN("SET DEFAULT ROLE "));
     def_str.append(&def_rolename);
-    def_str.append(" FOR '");
+    def_str.append(STRING_WITH_LEN(" FOR '"));
     def_str.append(&acl_entry->user);
     DBUG_ASSERT(!(acl_entry->flags & IS_ROLE));
     def_str.append(STRING_WITH_LEN("'@'"));
@@ -11276,7 +11277,7 @@ mysql_revoke_sp_privs(THD *thd, Grant_tables *tables, const Sp_handler *sph,
 bool mysql_revoke_all(THD *thd,  List <LEX_USER> &list)
 {
   uint counter, revoked;
-  int result;
+  int result, res;
   ACL_DB *acl_db;
   DBUG_ENTER("mysql_revoke_all");
 
@@ -11360,30 +11361,33 @@ bool mysql_revoke_all(THD *thd,  List <LEX_USER> &list)
     {
       for (counter= 0, revoked= 0 ; counter < column_priv_hash.records ; )
       {
-        const char *user,*host;
-        GRANT_TABLE *grant_table=
-          (GRANT_TABLE*) my_hash_element(&column_priv_hash, counter);
+	const char *user,*host;
+        GRANT_TABLE *grant_table= ((GRANT_TABLE*)
+                                   my_hash_element(&column_priv_hash, counter));
+
         user= grant_table->user;
         host= safe_str(grant_table->host.hostname);
 
         if (!strcmp(lex_user->user.str,user) &&
             !strcmp(lex_user->host.str, host))
-        {
-          List<LEX_COLUMN> columns;
-          /* TODO(cvicentiu) refactor to use
+	{
+	    List<LEX_COLUMN> columns;
+            /* TODO(cvicentiu) refactor replace_db_table to use
+               Db_table instead of TABLE directly. */
+	    if (replace_column_table(grant_table,
+                                     tables.columns_priv_table().table(),
+                                     *lex_user, columns, grant_table->db,
+                                     grant_table->tname, ALL_KNOWN_ACL, 1))
+              result= -1;
+
+          /* TODO(cvicentiu) refactor replace_db_table to use
              Db_table instead of TABLE directly. */
-          if (replace_column_table(grant_table,
-                                   tables.columns_priv_table().table(),
-                                   *lex_user, columns,
-                                   grant_table->db, grant_table->tname,
-                                   ALL_KNOWN_ACL, 1))
-            result= -1;
-          if (int res= replace_table_table(thd, grant_table,
-                                           tables.tables_priv_table().table(),
-                                           *lex_user,
-                                           grant_table->db, grant_table->tname,
-                                           ALL_KNOWN_ACL, NO_ACL, 1))
-          {
+	  if ((res= replace_table_table(thd, grant_table,
+                                        tables.tables_priv_table().table(),
+                                        *lex_user, grant_table->db,
+                                        grant_table->tname, ALL_KNOWN_ACL,
+                                        NO_ACL, 1)))
+	  {
             if (res > 0)
               result= -1;
             else
@@ -11396,8 +11400,8 @@ bool mysql_revoke_all(THD *thd,  List <LEX_USER> &list)
               continue;
             }
           }
-        }
-        counter++;
+	}
+	counter++;
       }
     } while (revoked);
 

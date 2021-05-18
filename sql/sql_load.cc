@@ -660,6 +660,7 @@ int mysql_load(THD *thd, const sql_exchange *ex, TABLE_LIST *table_list,
     }
     table->file->prepare_for_insert(create_lookup_handler);
     thd_progress_init(thd, 2);
+    fix_rownum_pointers(thd, thd->lex->current_select, &info.copied);
     if (table_list->table->validate_default_values_of_unset_fields(thd))
     {
       read_info.error= true;
@@ -867,7 +868,7 @@ static bool write_execute_load_query_log_event(THD *thd, const sql_exchange* ex,
      */
     qualify_db= db_arg;
   }
-  lle.print_query(thd, FALSE, (const char *) ex->cs?ex->cs->csname:NULL,
+  lle.print_query(thd, FALSE, (const char*) ex->cs ? ex->cs->cs_name.str : NULL,
                   &query_str, &fname_start, &fname_end, qualify_db);
 
   /*
@@ -877,18 +878,18 @@ static bool write_execute_load_query_log_event(THD *thd, const sql_exchange* ex,
   {
     List_iterator<Item>  li(thd->lex->field_list);
 
-    query_str.append(" (");
+    query_str.append(STRING_WITH_LEN(" ("));
     n= 0;
 
     while ((item= li++))
     {
       if (n++)
-        query_str.append(", ");
+        query_str.append(STRING_WITH_LEN(", "));
       const Load_data_outvar *var= item->get_load_data_outvar();
       DBUG_ASSERT(var);
       var->load_data_print_for_log_event(thd, &query_str);
     }
-    query_str.append(")");
+    query_str.append(')');
   }
 
   if (!thd->lex->update_list.is_empty())

@@ -30,7 +30,7 @@
 #include "parse_file.h"   // File_parser_dummy_hook
 #include "sql_db.h"       // my_dboptions_cache_free
                           // my_dboptions_cache_init
-#include "sql_table.h"    // release_ddl_log, execute_ddl_log_recovery
+#include "sql_table.h"    // ddl_log_release, ddl_log_execute_recovery
 #include "sql_connect.h"  // free_max_user_conn, init_max_user_conn,
                           // handle_one_connection
 #include "thread_cache.h"
@@ -51,6 +51,7 @@
 #include "sql_manager.h"  // stop_handle_manager, start_handle_manager
 #include "sql_expression_cache.h" // subquery_cache_miss, subquery_cache_hit
 #include "sys_vars_shared.h"
+#include "ddl_log.h"
 
 #include <m_ctype.h>
 #include <my_dir.h>
@@ -470,6 +471,7 @@ ulong aborted_threads, aborted_connects, aborted_connects_preauth;
 ulong delayed_insert_timeout, delayed_insert_limit, delayed_queue_size;
 ulong delayed_insert_threads, delayed_insert_writes, delayed_rows_in_use;
 ulong delayed_insert_errors,flush_time;
+ulong malloc_calls;
 ulong specialflag=0;
 ulong binlog_cache_use= 0, binlog_cache_disk_use= 0;
 ulong binlog_stmt_cache_use= 0, binlog_stmt_cache_disk_use= 0;
@@ -571,7 +573,7 @@ char log_error_file[FN_REFLEN], glob_hostname[FN_REFLEN], *opt_log_basename;
 char mysql_real_data_home[FN_REFLEN],
      lc_messages_dir[FN_REFLEN], reg_ext[FN_EXTLEN],
      mysql_charsets_dir[FN_REFLEN],
-     *opt_init_file, *opt_tc_log_file;
+     *opt_init_file, *opt_tc_log_file, *opt_ddl_recovery_file;
 char *lc_messages_dir_ptr= lc_messages_dir, *log_error_file_ptr;
 char mysql_unpacked_real_data_home[FN_REFLEN];
 size_t mysql_unpacked_real_data_home_len;
@@ -664,6 +666,12 @@ static std::atomic<char*> shutdown_user;
 
 static thread_local THD *THR_THD;
 
+/**
+  Get current THD object from thread local data
+
+  @retval     The THD object for the thread, NULL if not connection thread
+*/
+
 MYSQL_THD _current_thd() { return THR_THD; }
 void set_current_thd(THD *thd) { THR_THD= thd; }
 
@@ -705,6 +713,7 @@ mysql_mutex_t LOCK_prepared_stmt_count;
 #ifdef HAVE_OPENSSL
 mysql_mutex_t LOCK_des_key_file;
 #endif
+mysql_mutex_t LOCK_backup_log;
 mysql_rwlock_t LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
 mysql_rwlock_t LOCK_ssl_refresh;
 mysql_rwlock_t LOCK_all_status_vars;
@@ -850,6 +859,7 @@ PSI_file_key key_file_binlog,  key_file_binlog_cache, key_file_binlog_index,
   key_file_dbopt, key_file_des_key_file, key_file_ERRMSG, key_select_to_file,
   key_file_fileparser, key_file_frm, key_file_global_ddl_log, key_file_load,
   key_file_loadfile, key_file_log_event_data, key_file_log_event_info,
+  key_file_log_ddl,
   key_file_master_info, key_file_misc, key_file_partition_ddl_log,
   key_file_pid, key_file_relay_log_info, key_file_send_file, key_file_tclog,
   key_file_trg, key_file_trn, key_file_init;
@@ -875,7 +885,7 @@ PSI_mutex_key key_BINLOG_LOCK_index, key_BINLOG_LOCK_xid_list,
   key_LOCK_crypt, key_LOCK_delayed_create,
   key_LOCK_delayed_insert, key_LOCK_delayed_status, key_LOCK_error_log,
   key_LOCK_gdl, key_LOCK_global_system_variables,
-  key_LOCK_manager,
+  key_LOCK_manager, key_LOCK_backup_log,
   key_LOCK_prepared_stmt_count,
   key_LOCK_rpl_status, key_LOCK_server_started,
   key_LOCK_status,
@@ -935,6 +945,7 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_delayed_insert_mutex, "Delayed_insert::mutex", 0},
   { &key_hash_filo_lock, "hash_filo::lock", 0},
   { &key_LOCK_active_mi, "LOCK_active_mi", PSI_FLAG_GLOBAL},
+  { &key_LOCK_backup_log, "LOCK_backup_log", PSI_FLAG_GLOBAL},
   { &key_LOCK_thread_id, "LOCK_thread_id", PSI_FLAG_GLOBAL},
   { &key_LOCK_crypt, "LOCK_crypt", PSI_FLAG_GLOBAL},
   { &key_LOCK_delayed_create, "LOCK_delayed_create", PSI_FLAG_GLOBAL},
@@ -1858,7 +1869,7 @@ static void mysqld_exit(int exit_code)
   {
     fprintf(stderr, "Warning: Memory not freed: %lld\n",
             (longlong) global_status_var.global_memory_used);
-    if (exit_code == 0)
+    if (exit_code == 0 || opt_endinfo)
       SAFEMALLOC_REPORT_MEMORY(0);
   }
   DBUG_LEAVE;
@@ -1884,7 +1895,7 @@ static void clean_up(bool print_message)
     my_bitmap_free(&slave_error_mask);
 #endif
   stop_handle_manager();
-  release_ddl_log();
+  ddl_log_release();
 
   logger.cleanup_base();
 
@@ -2037,6 +2048,7 @@ static void clean_up_mutexes()
 #endif /* HAVE_REPLICATION */
   mysql_mutex_destroy(&LOCK_active_mi);
   mysql_rwlock_destroy(&LOCK_ssl_refresh);
+  mysql_mutex_destroy(&LOCK_backup_log);
   mysql_rwlock_destroy(&LOCK_sys_init_connect);
   mysql_rwlock_destroy(&LOCK_sys_init_slave);
   mysql_mutex_destroy(&LOCK_global_system_variables);
@@ -3596,6 +3608,10 @@ static void my_malloc_size_cb_func(long long size, my_bool is_thread_specific)
 {
   THD *thd= current_thd;
 
+#ifndef DBUG_OFF
+  statistic_increment(malloc_calls, &LOCK_status);
+#endif
+
   /*
     When thread specific is set, both mysqld_server_initialized and thd
     must be set, and we check that with DBUG_ASSERT.
@@ -4141,7 +4157,7 @@ static int init_common_variables()
     {
       sql_print_error(ER_DEFAULT(ER_COLLATION_CHARSET_MISMATCH),
 		      default_collation_name,
-		      default_charset_info->csname);
+		      default_charset_info->cs_name.str);
       return 1;
     }
     default_charset_info= default_collation;
@@ -4159,8 +4175,8 @@ static int init_common_variables()
   {
     sql_print_warning("'%s' can not be used as client character set. "
                       "'%s' will be used as default client character set.",
-                      default_charset_info->csname,
-                      my_charset_latin1.csname);
+                      default_charset_info->cs_name.str,
+                      my_charset_latin1.cs_name.str);
     global_system_variables.collation_connection= &my_charset_latin1;
     global_system_variables.character_set_results= &my_charset_latin1;
     global_system_variables.character_set_client= &my_charset_latin1;
@@ -4332,6 +4348,7 @@ static int init_thread_environment()
                    MY_MUTEX_INIT_SLOW);
   mysql_mutex_init(key_LOCK_commit_ordered, &LOCK_commit_ordered,
                    MY_MUTEX_INIT_SLOW);
+  mysql_mutex_init(key_LOCK_backup_log, &LOCK_backup_log, MY_MUTEX_INIT_FAST);
 
 #ifdef HAVE_OPENSSL
   mysql_mutex_init(key_LOCK_des_key_file,
@@ -5187,7 +5204,7 @@ static int init_server_components()
   if (log_output_options & LOG_NONE)
   {
     /*
-      Issue a warining if there were specified additional options to the
+      Issue a warning if there were specified additional options to the
       log-output along with NONE. Probably this wasn't what user wanted.
     */
     if ((log_output_options & LOG_NONE) && (log_output_options & ~LOG_NONE))
@@ -5261,6 +5278,9 @@ static int init_server_components()
   }
 #endif
 
+  if (ddl_log_initialize())
+    unireg_abort(1);
+
   tc_log= get_tc_log_implementation();
 
   if (tc_log->open(opt_bin_log ? opt_bin_logname : opt_tc_log_file))
@@ -5270,9 +5290,7 @@ static int init_server_components()
   }
 
   if (ha_recover(0))
-  {
     unireg_abort(1);
-  }
 
   if (opt_bin_log)
   {
@@ -5303,6 +5321,10 @@ static int init_server_components()
                         "or --binlog-expire-logs-seconds work.");
   }
 #endif
+
+  if (ddl_log_execute_recovery() > 0)
+    unireg_abort(1);
+  ha_signal_ddl_recovery_done();
 
   if (opt_myisam_log)
     (void) mi_log(1);
@@ -5671,8 +5693,6 @@ int mysqld_main(int argc, char **argv)
 #endif
 
   initialize_information_schema_acl();
-
-  execute_ddl_log_recovery();
 
   /*
     Change EVENTS_ORIGINAL to EVENTS_OFF (the default value) as there is no
@@ -6448,6 +6468,10 @@ struct my_option my_long_options[]=
    "The location and name to use for the file that keeps a list of the last "
    "relay logs",
    &opt_relaylog_index_name, &opt_relaylog_index_name, 0, GET_STR,
+   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+  {"log-ddl-recovery", 0,
+   "Path to file used for recovery of DDL statements after a crash",
+   &opt_ddl_recovery_file, &opt_ddl_recovery_file, 0, GET_STR,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"log-isam", OPT_ISAM_LOG, "Log all MyISAM changes to file.",
    &myisam_log_filename, &myisam_log_filename, 0, GET_STR,
@@ -7254,6 +7278,9 @@ SHOW_VAR status_vars[]= {
   {"Handler_write",            (char*) offsetof(STATUS_VAR, ha_write_count), SHOW_LONG_STATUS},
   {"Key",                      (char*) &show_default_keycache, SHOW_FUNC},
   {"Last_query_cost",          (char*) offsetof(STATUS_VAR, last_query_cost), SHOW_DOUBLE_STATUS},
+#ifndef DBUG_OFF
+  {"malloc_calls",             (char*) &malloc_calls, SHOW_LONG},
+#endif
   {"Max_statement_time_exceeded", (char*) offsetof(STATUS_VAR, max_statement_time_exceeded), SHOW_LONG_STATUS},
   {"Master_gtid_wait_count",   (char*) offsetof(STATUS_VAR, master_gtid_wait_count), SHOW_LONG_STATUS},
   {"Master_gtid_wait_timeouts", (char*) offsetof(STATUS_VAR, master_gtid_wait_timeouts), SHOW_LONG_STATUS},
@@ -7503,7 +7530,7 @@ static void usage(void)
 						   MYF(MY_WME))))
     exit(1);
   if (!default_collation_name)
-    default_collation_name= (char*) default_charset_info->name;
+    default_collation_name= (char*) default_charset_info->coll_name.str;
   print_version();
   puts(ORACLE_WELCOME_COPYRIGHT_NOTICE("2000"));
   puts("Starts the MariaDB database server.\n");
@@ -7574,6 +7601,7 @@ static int mysql_init_variables(void)
   opt_logname= opt_binlog_index_name= opt_slow_logname= 0;
   opt_log_basename= 0;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
+  opt_ddl_recovery_file= (char *) "ddl_recovery.log";
   opt_secure_auth= 0;
   opt_bootstrap= opt_myisam_log= 0;
   disable_log_notes= 0;
@@ -7587,6 +7615,7 @@ static int mysql_init_variables(void)
   abort_loop= select_thread_in_use= signal_thread_in_use= 0;
   grant_option= 0;
   aborted_threads= aborted_connects= aborted_connects_preauth= 0;
+  malloc_calls= 0;
   subquery_cache_miss= subquery_cache_hit= 0;
   delayed_insert_threads= delayed_insert_writes= delayed_rows_in_use= 0;
   delayed_insert_errors= thread_created= 0;
@@ -8953,6 +8982,7 @@ static PSI_file_info all_server_files[]=
   { &key_file_global_ddl_log, "global_ddl_log", 0},
   { &key_file_load, "load", 0},
   { &key_file_loadfile, "LOAD_FILE", 0},
+  { &key_file_log_ddl, "log_ddl", 0},
   { &key_file_log_event_data, "log_event_data", 0},
   { &key_file_log_event_info, "log_event_info", 0},
   { &key_file_master_info, "master_info", 0},

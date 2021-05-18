@@ -1114,15 +1114,15 @@ ulong STDCALL mysql_thread_id(MYSQL *mysql)
 
 const char * STDCALL mysql_character_set_name(MYSQL *mysql)
 {
-  return mysql->charset->csname;
+  return mysql->charset->cs_name.str;
 }
 
 void STDCALL mysql_get_character_set_info(MYSQL *mysql, MY_CHARSET_INFO *csinfo)
 {
   csinfo->number   = mysql->charset->number;
   csinfo->state    = mysql->charset->state;
-  csinfo->csname   = mysql->charset->csname;
-  csinfo->name     = mysql->charset->name;
+  csinfo->csname   = mysql->charset->cs_name.str;
+  csinfo->name     = mysql->charset->coll_name.str;
   csinfo->comment  = mysql->charset->comment;
   csinfo->mbminlen = mysql->charset->mbminlen;
   csinfo->mbmaxlen = mysql->charset->mbmaxlen;
@@ -1210,16 +1210,21 @@ mysql_hex_string(char *to, const char *from, ulong length)
 ulong STDCALL
 mysql_escape_string(char *to,const char *from,ulong length)
 {
-  return (uint) escape_string_for_mysql(default_charset_info, to, 0, from, length);
+  my_bool overflow;
+  return (uint) escape_string_for_mysql(default_charset_info, to, 0, from,
+                                        length, &overflow);
 }
 
 ulong STDCALL
 mysql_real_escape_string(MYSQL *mysql, char *to,const char *from,
 			 ulong length)
 {
+  my_bool overflow;
   if (mysql->server_status & SERVER_STATUS_NO_BACKSLASH_ESCAPES)
-    return (uint) escape_quotes_for_mysql(mysql->charset, to, 0, from, length);
-  return (uint) escape_string_for_mysql(mysql->charset, to, 0, from, length);
+    return (ulong) escape_quotes_for_mysql(mysql->charset, to, 0, from, length,
+                                           &overflow);
+  return (ulong) escape_string_for_mysql(mysql->charset, to, 0, from, length,
+                                         &overflow);
 }
 
 void STDCALL

@@ -404,6 +404,7 @@ static SYMBOL symbols[] = {
   { "MICROSECOND",	SYM(MICROSECOND_SYM)},
   { "MIDDLEINT",	SYM(MEDIUMINT)},	/* For powerbuilder */
   { "MIGRATE",          SYM(MIGRATE_SYM)},
+  { "MINUS",            SYM(MINUS_ORACLE_SYM)},
   { "MINUTE",		SYM(MINUTE_SYM)},
   { "MINUTE_MICROSECOND", SYM(MINUTE_MICROSECOND_SYM)},
   { "MINUTE_SECOND",	SYM(MINUTE_SECOND_SYM)},
@@ -561,6 +562,7 @@ static SYMBOL symbols[] = {
   { "ROUTINE",		SYM(ROUTINE_SYM)},
   { "ROW",		SYM(ROW_SYM)},
   { "ROWCOUNT",         SYM(ROWCOUNT_SYM)}, /* Oracle-N */
+  { "ROWNUM",           SYM(ROWNUM_SYM)}, /* Oracle-R */
   { "ROWS",		SYM(ROWS_SYM)},
   { "ROWTYPE",          SYM(ROWTYPE_MARIADB_SYM)},
   { "ROW_COUNT",        SYM(ROW_COUNT_SYM)},
@@ -648,6 +650,7 @@ static SYMBOL symbols[] = {
   { "SUSPEND",          SYM(SUSPEND_SYM)},
   { "SWAPS",      SYM(SWAPS_SYM)},
   { "SWITCHES",   SYM(SWITCHES_SYM)},
+  { "SYSDATE",		SYM(SYSDATE)},
   { "SYSTEM",     SYM(SYSTEM)},
   { "SYSTEM_TIME",      SYM(SYSTEM_TIME_SYM)},
   { "TABLE",		SYM(TABLE_SYM)},
@@ -745,6 +748,7 @@ static SYMBOL symbols[] = {
 
 static SYMBOL sql_functions[] = {
   { "ADDDATE",		SYM(ADDDATE_SYM)},
+  { "ADD_MONTHS",	SYM(ADD_MONTHS_SYM)},
   { "BIT_AND",		SYM(BIT_AND)},
   { "BIT_OR",		SYM(BIT_OR)},
   { "BIT_XOR",		SYM(BIT_XOR)},
@@ -787,7 +791,6 @@ static SYMBOL sql_functions[] = {
   { "SUBSTR",		SYM(SUBSTRING)},
   { "SUBSTRING",	SYM(SUBSTRING)},
   { "SUM",		SYM(SUM_SYM)},
-  { "SYSDATE",		SYM(SYSDATE)},
   { "SYSTEM_USER",      SYM(USER_SYM)},
   { "TRIM",		SYM(TRIM)},
   { "TRIM_ORACLE",	SYM(TRIM_ORACLE)},

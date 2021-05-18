@@ -1443,7 +1443,7 @@ PCSZ ha_connect::GetStringOption(PCSZ opname, PCSZ sdef)
                                      : table->s->table_charset;
 
     if (chif)
-      opval= (char*)chif->csname;
+      opval= (char*)chif->cs_name.str;
 
   } else
     opval= GetStringTableOption(xp->g, options, opname, NULL);
@@ -1607,7 +1607,7 @@ void *ha_connect::GetColumnOption(PGLOBAL g, void *field, PCOLINFO pcf)
 
   // Now get column information
   pcf->Name= (char*)fp->field_name.str;
-	chset = (char*)fp->charset()->name;
+  chset= (char*)fp->charset()->coll_name.str;
 
   if (fop && fop->special) {
     pcf->Fieldfmt= (char*)fop->special;
@@ -2586,11 +2586,9 @@ bool ha_connect::MakeKeyWhere(PGLOBAL g, PSTRG qry, OPVAL vop, char q,
 				qry->Append('\'');
 
 			if (kpart->key_part_flag & HA_VAR_LENGTH_PART) {
-				String varchar;
-				uint   var_length= uint2korr(ptr);
-
-				varchar.set_quick((char*)ptr + HA_KEY_BLOB_LENGTH,
-					var_length, &my_charset_bin);
+                                 uint   var_length= uint2korr(ptr);
+                                 String varchar((char*) ptr + HA_KEY_BLOB_LENGTH,
+                                         var_length, &my_charset_bin);
 				qry->Append(varchar.ptr(), varchar.length(), nq);
 			}	else {
 				char   strbuff[MAX_FIELD_WIDTH];
@@ -3480,11 +3478,11 @@ bool ha_connect::get_error_message(int error, String* buf)
 
 		if (trace(1))
 			htrc("GEM(%d): %s\n", error, g->Message);
-
-		buf->append(ErrConvString(g->Message, strlen(g->Message),
-			&my_charset_latin1).ptr());
+                buf->append(ErrConvString(g->Message,
+                                          strlen(g->Message),
+                                          &my_charset_latin1).lex_cstring());
 	} else
-    buf->append("Cannot retrieve error message");
+                buf->append(STRING_WITH_LEN("Cannot retrieve error message"));
 
   DBUG_RETURN(false);
 } // end of get_error_message
@@ -5422,10 +5420,10 @@ static bool add_field(String* sql, TABTYPE ttp, const char* field_name, int typ,
 	bool q, error = false;
 	const char* type = PLGtoMYSQLtype(typ, dbf, var);
 
-	error |= sql->append('`');
-	error |= sql->append(field_name);
-	error |= sql->append("` ");
-	error |= sql->append(type);
+	error|= sql->append('`');
+	error|= sql->append(field_name, strlen(field_name));
+	error|= sql->append(STRING_WITH_LEN("` "));
+	error|= sql->append(type, strlen(type));
 
 	if (typ == TYPE_STRING ||
 		(len && typ != TYPE_DATE && (typ != TYPE_DOUBLE || dec >= 0))) {
@@ -5446,20 +5444,20 @@ static bool add_field(String* sql, TABTYPE ttp, const char* field_name, int typ,
 	} // endif len
 
 	if (v == 'U')
-		error |= sql->append(" UNSIGNED");
+          error |= sql->append(STRING_WITH_LEN(" UNSIGNED"));
 	else if (v == 'Z')
-		error |= sql->append(" ZEROFILL");
+          error |= sql->append(STRING_WITH_LEN(" ZEROFILL"));
 
 	if (key && *key) {
-		error |= sql->append(" ");
-		error |= sql->append(key);
+		error |= sql->append(' ');
+		error |= sql->append(key, strlen(key));
 	} // endif key
 
 	if (tm)
 		error |= sql->append(STRING_WITH_LEN(" NOT NULL"), system_charset_info);
 
 	if (dft && *dft) {
-		error |= sql->append(" DEFAULT ");
+          error |= sql->append(STRING_WITH_LEN(" DEFAULT "));
 
 		if (typ == TYPE_DATE)
 			q = (strspn(dft, "0123456789 -:/") == strlen(dft));
@@ -5467,41 +5465,41 @@ static bool add_field(String* sql, TABTYPE ttp, const char* field_name, int typ,
 			q = !IsTypeNum(typ);
 
 		if (q) {
-			error |= sql->append("'");
+			error |= sql->append(STRING_WITH_LEN("'"));
 			error |= sql->append_for_single_quote(dft, strlen(dft));
-			error |= sql->append("'");
+			error |= sql->append('\'');
 		} else
-			error |= sql->append(dft);
+			error |= sql->append(dft, strlen(dft));
 
 	} // endif dft
 
 	if (xtra && *xtra) {
-		error |= sql->append(" ");
-		error |= sql->append(xtra);
+		error |= sql->append(' ');
+		error |= sql->append(xtra, strlen(xtra));
 	} // endif rem
 
 	if (rem && *rem) {
-		error |= sql->append(" COMMENT '");
+		error |= sql->append(STRING_WITH_LEN(" COMMENT '"));
 		error |= sql->append_for_single_quote(rem, strlen(rem));
-		error |= sql->append("'");
+		error |= sql->append(STRING_WITH_LEN("'"));
 	} // endif rem
 
 	if (fmt && *fmt) {
 		switch (ttp) {
-		case TAB_JSON: error |= sql->append(" JPATH='"); break;
+		case TAB_JSON: error |= sql->append(STRING_WITH_LEN(" JPATH='")); break;
 #if defined(BSON_SUPPORT)
-    case TAB_BSON: error |= sql->append(" JPATH='"); break;
+                case TAB_BSON: error |= sql->append(STRING_WITH_LEN(" JPATH='")); break;
 #endif   // BSON_SUPPORT
-    case TAB_XML:  error |= sql->append(" XPATH='"); break;
-		default:	     error |= sql->append(" FIELD_FORMAT='");
+                case TAB_XML:  error |= sql->append(STRING_WITH_LEN(" XPATH='")); break;
+		default:	     error |= sql->append(STRING_WITH_LEN(" FIELD_FORMAT='"));
 		} // endswitch ttp
 
 		error |= sql->append_for_single_quote(fmt, strlen(fmt));
-		error |= sql->append("'");
+		error |= sql->append('\'');
 	} // endif flag
 
 	if (flag) {
-		error |= sql->append(" FLAG=");
+		error |= sql->append(STRING_WITH_LEN(" FLAG="));
 		error |= sql->append_ulonglong(flag);
 	} // endif flag
 
@@ -5537,7 +5535,7 @@ static int init_table_share(THD* thd,
 
         if (vull != opt->def_value) {
           oom|= sql->append(' ');
-          oom|= sql->append(opt->name);
+          oom|= sql->append(opt->name, strlen(opt->name));
           oom|= sql->append('=');
           oom|= sql->append_ulonglong(vull);
           } // endif vull
@@ -5548,8 +5546,8 @@ static int init_table_share(THD* thd,
 
         if (vstr) {
           oom|= sql->append(' ');
-          oom|= sql->append(opt->name);
-          oom|= sql->append("='");
+          oom|= sql->append(opt->name, strlen(opt->name));
+          oom|= sql->append(STRING_WITH_LEN("='"));
           oom|= sql->append_for_single_quote(vstr, strlen(vstr));
           oom|= sql->append('\'');
           } // endif vstr
@@ -5560,9 +5558,12 @@ static int init_table_share(THD* thd,
 
         if (vull != opt->def_value) {
           oom|= sql->append(' ');
-          oom|= sql->append(opt->name);
+          oom|= sql->append(opt->name, strlen(opt->name));
           oom|= sql->append('=');
-          oom|= sql->append(vull ? "YES" : "NO");
+          if (vull)
+            oom|= sql->append("YES", 3);
+          else
+            oom|= sql->append("NO", 2);
           } // endif vull
 
         break;
@@ -5577,7 +5578,7 @@ static int init_table_share(THD* thd,
 
   if (create_info->connect_string.length) {
     oom|= sql->append(' ');
-    oom|= sql->append("CONNECTION='");
+    oom|= sql->append(STRING_WITH_LEN("CONNECTION='"));
     oom|= sql->append_for_single_quote(create_info->connect_string.str,
                                        create_info->connect_string.length);
     oom|= sql->append('\'');
@@ -5589,8 +5590,8 @@ static int init_table_share(THD* thd,
 
   if (create_info->default_table_charset) {
     oom|= sql->append(' ');
-    oom|= sql->append("CHARSET=");
-    oom|= sql->append(create_info->default_table_charset->csname);
+    oom|= sql->append(STRING_WITH_LEN("CHARSET="));
+    oom|= sql->append(create_info->default_table_charset->cs_name);
 
     if (oom)
       return HA_ERR_OUT_OF_MEM;

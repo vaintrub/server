@@ -325,17 +325,6 @@ bool Foreign_key::validate(List<Create_field> &table_fields)
 ** Thread specific functions
 ****************************************************************************/
 
-/**
-  Get current THD object from thread local data
-
-  @retval     The THD object for the thread, NULL if not connection thread
-*/
-THD *thd_get_current_thd()
-{
-  return current_thd;
-}
-
-
 extern "C" unsigned long long thd_query_id(const MYSQL_THD thd)
 {
   return((unsigned long long)thd->query_id);
@@ -648,6 +637,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    thread_dbug_id(id),
    os_thread_id(0),
    global_disable_checkpoint(0),
+   current_backup_stage(BACKUP_FINISHED),
    failed_com_change_user(0),
    is_fatal_error(0),
    transaction_rollback_request(0),
@@ -799,6 +789,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
   mysys_var=0;
   binlog_evt_union.do_union= FALSE;
   binlog_table_maps= FALSE;
+  binlog_xid= 0;
   enable_slow_log= 0;
   durability_property= HA_REGULAR_DURABILITY;
 
@@ -2355,7 +2346,7 @@ bool THD::convert_string(LEX_STRING *to, CHARSET_INFO *to_cs,
   {
     my_error(ER_BAD_DATA, MYF(0),
              ErrConvString(from, from_length, from_cs).ptr(),
-             to_cs->csname);
+             to_cs->cs_name.str);
     DBUG_RETURN(true);
   }
   DBUG_RETURN(false);
@@ -2407,7 +2398,8 @@ public:
     if (most_important_error_pos())
     {
       ErrConvString err(src, src_length, &my_charset_bin);
-      my_error(ER_INVALID_CHARACTER_STRING, MYF(0), srccs->csname, err.ptr());
+      my_error(ER_INVALID_CHARACTER_STRING, MYF(0), srccs->cs_name.str,
+               err.ptr());
       return true;
     }
     return false;
@@ -2475,7 +2467,7 @@ bool THD::check_string_for_wellformedness(const char *str,
   if (wlen < length)
   {
     ErrConvString err(str, length, &my_charset_bin);
-    my_error(ER_INVALID_CHARACTER_STRING, MYF(0), cs->csname, err.ptr());
+    my_error(ER_INVALID_CHARACTER_STRING, MYF(0), cs->cs_name.str, err.ptr());
     return true;
   }
   return false;
@@ -2722,45 +2714,45 @@ void THD::make_explain_field_list(List<Item> &field_list, uint8 explain_flags,
   field_list.push_back(item= new (mem_root)
                        Item_return_int(this, "id", 3,
                                        MYSQL_TYPE_LONGLONG), mem_root);
-  item->maybe_null= 1;
+  item->set_maybe_null();
   field_list.push_back(new (mem_root)
                        Item_empty_string(this, "select_type", 19, cs),
                        mem_root);
   field_list.push_back(item= new (mem_root)
                        Item_empty_string(this, "table", NAME_CHAR_LEN, cs),
                        mem_root);
-  item->maybe_null= 1;
+  item->set_maybe_null();
   if (explain_flags & DESCRIBE_PARTITIONS)
   {
     /* Maximum length of string that make_used_partitions_str() can produce */
     item= new (mem_root) Item_empty_string(this, "partitions",
                                            MAX_PARTITIONS * (1 + FN_LEN), cs);
     field_list.push_back(item, mem_root);
-    item->maybe_null= 1;
+    item->set_maybe_null();
   }
   field_list.push_back(item= new (mem_root)
                        Item_empty_string(this, "type", 10, cs),
                        mem_root);
-  item->maybe_null= 1;
+  item->set_maybe_null();
   field_list.push_back(item= new (mem_root)
                        Item_empty_string(this, "possible_keys",
                                          NAME_CHAR_LEN*MAX_KEY, cs),
                        mem_root);
-  item->maybe_null=1;
+  item->set_maybe_null();
   field_list.push_back(item=new (mem_root)
                        Item_empty_string(this, "key", NAME_CHAR_LEN, cs),
                        mem_root);
-  item->maybe_null=1;
+  item->set_maybe_null();
   field_list.push_back(item=new (mem_root)
                        Item_empty_string(this, "key_len",
                                          NAME_CHAR_LEN*MAX_KEY),
                        mem_root);
-  item->maybe_null=1;
+  item->set_maybe_null();
   field_list.push_back(item=new (mem_root)
                        Item_empty_string(this, "ref",
                                          NAME_CHAR_LEN*MAX_REF_PARTS, cs),
                        mem_root);
-  item->maybe_null=1;
+  item->set_maybe_null();
   field_list.push_back(item=new (mem_root)
                        Item_empty_string(this, "rows", NAME_CHAR_LEN, cs),
                        mem_root);
@@ -2769,7 +2761,7 @@ void THD::make_explain_field_list(List<Item> &field_list, uint8 explain_flags,
     field_list.push_back(item= new (mem_root)
                          Item_empty_string(this, "r_rows", NAME_CHAR_LEN, cs),
                          mem_root);
-    item->maybe_null=1;
+    item->set_maybe_null();
   }
 
   if (is_analyze || (explain_flags & DESCRIBE_EXTENDED))
@@ -2777,7 +2769,7 @@ void THD::make_explain_field_list(List<Item> &field_list, uint8 explain_flags,
     field_list.push_back(item= new (mem_root)
                          Item_float(this, "filtered", 0.1234, 2, 4),
                          mem_root);
-    item->maybe_null=1;
+    item->set_maybe_null();
   }
 
   if (is_analyze)
@@ -2785,10 +2777,10 @@ void THD::make_explain_field_list(List<Item> &field_list, uint8 explain_flags,
     field_list.push_back(item= new (mem_root)
                          Item_float(this, "r_filtered", 0.1234, 2, 4),
                          mem_root);
-    item->maybe_null=1;
+    item->set_maybe_null();
   }
 
-  item->maybe_null= 1;
+  item->set_maybe_null();
   field_list.push_back(new (mem_root)
                        Item_empty_string(this, "Extra", 255, cs),
                        mem_root);
@@ -2929,11 +2921,11 @@ bool select_result::check_simple_select() const
 }
 
 
-static String default_line_term("\n",default_charset_info);
-static String default_escaped("\\",default_charset_info);
-static String default_field_term("\t",default_charset_info);
-static String default_enclosed_and_line_start("", default_charset_info);
-static String default_xml_row_term("<row>", default_charset_info);
+static String default_line_term("\n", 1, default_charset_info);
+static String default_escaped("\\", 1, default_charset_info);
+static String default_field_term("\t", 1, default_charset_info);
+static String default_enclosed_and_line_start("", 0, default_charset_info);
+static String default_xml_row_term("<row>", 5, default_charset_info);
 
 sql_exchange::sql_exchange(const char *name, bool flag,
                            enum enum_filetype filetype_arg)
@@ -6541,7 +6533,7 @@ int THD::decide_logging_format(TABLE_LIST *tables)
             table->lock_type >= TL_FIRST_WRITE)
         {
           table_names.append(&table->table_name);
-          table_names.append(",");
+          table_names.append(',');
         }
       }
       if (!table_names.is_empty())
