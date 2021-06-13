@@ -732,7 +732,7 @@ bool DBFFAM::AllocateBuffer(PGLOBAL g)
               return true;
             } // endswitch c
       
-          strncpy(descp->Name, cdp->GetName(), 11);
+          *strncpy(descp->Name, cdp->GetName(), sizeof(descp->Name)-1)= 0;
           descp->Type = c;
           descp->Length = (uchar)cdp->GetLong();
           } // endif Flags

@@ -253,8 +253,7 @@ PQRYRES XMLColumns(PGLOBAL g, char *db, char *tab, PTOS topt, bool info)
      more:
       if (vp->atp) {
 				size_t z = sizeof(colname) - 1;
-        strncpy(colname, vp->atp->GetName(g), z);
-				colname[z] = 0;
+                                *strncpy(colname, vp->atp->GetName(g), z)= 0;
 				strncat(xcol->Name, colname, XLEN(xcol->Name));
 
         switch (vp->atp->GetText(g, buf, sizeof(buf))) {
@@ -275,7 +274,7 @@ PQRYRES XMLColumns(PGLOBAL g, char *db, char *tab, PTOS topt, bool info)
         if (tdp->Usedom && node->GetType() != 1)
           continue;
 
-        strncpy(colname, node->GetName(g), sizeof(colname));
+        *strncpy(colname, node->GetName(g), sizeof(colname)-1)= 0;
 				strncat(xcol->Name, colname, XLEN(xcol->Name));
 
         if (j)

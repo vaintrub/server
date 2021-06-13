@@ -4758,7 +4758,7 @@ char *jbin_array(UDF_INIT *initid, UDF_ARGS *args, char *result,
 			bsp = NULL;
 
 		if (!bsp && (bsp = JbinAlloc(g, args, initid->max_length, NULL)))
-			strncpy(bsp->Msg, g->Message, BMX);
+			*strncpy(bsp->Msg, g->Message, BMX-1)= 0;
 
 		// Keep result of constant function
 		g->Xchk = (initid->const_item) ? bsp : NULL;
@@ -4829,7 +4829,7 @@ char *jbin_array_add_values(UDF_INIT *initid, UDF_ARGS *args, char *result,
 
 		} else
 			if ((bsp = JbinAlloc(g, args, initid->max_length, NULL)))
-				strncpy(bsp->Msg, g->Message, BMX);
+				*strncpy(bsp->Msg, g->Message, BMX-1)= 0;
 
 		// Keep result of constant function
 		g->Xchk = (initid->const_item) ? bsp : NULL;
@@ -5051,7 +5051,7 @@ char *jbin_object(UDF_INIT *initid, UDF_ARGS *args, char *result,
 
 		} else
 			if ((bsp = JbinAlloc(g, args, initid->max_length, NULL)))
-				strncpy(bsp->Msg, g->Message, BMX);
+				*strncpy(bsp->Msg, g->Message, BMX-1)= 0;
 
 		// Keep result of constant function
 		g->Xchk = (initid->const_item) ? bsp : NULL;
@@ -5107,7 +5107,7 @@ char *jbin_object_nonull(UDF_INIT *initid, UDF_ARGS *args, char *result,
 
 		} else
 			if ((bsp = JbinAlloc(g, args, initid->max_length, NULL)))
-				strncpy(bsp->Msg, g->Message, BMX);
+				*strncpy(bsp->Msg, g->Message, BMX-1)= 0;
 
 		// Keep result of constant function
 		g->Xchk = (initid->const_item) ? bsp : NULL;
@@ -5166,7 +5166,7 @@ char *jbin_object_key(UDF_INIT *initid, UDF_ARGS *args, char *result,
 
 		} else
 			if ((bsp = JbinAlloc(g, args, initid->max_length, NULL)))
-				strncpy(bsp->Msg, g->Message, BMX);
+				*strncpy(bsp->Msg, g->Message, BMX-1)= 0;
 
 		// Keep result of constant function
 		g->Xchk = (initid->const_item) ? bsp : NULL;
