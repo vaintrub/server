@@ -558,7 +558,10 @@ DROP TABLE t1;
 #
 # Test FLUSH THREADS
 #
+set @save_thread_cache_size=@@global.thread_cache_size;
+set @@global.thread_cache_size=0;
 flush threads;
 show status like "Threads_cached";
 Variable_name	Value
 Threads_cached	0
+set @@global.thread_cache_size=@save_thread_cache_size;
