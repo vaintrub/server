@@ -1,0 +1,91 @@
+set global max_allowed_packet=1073741824;
+connect u,localhost,root;
+#
+# MDEV-24909 JSON functions don't respect KILL QUERY / max_statement_time limit
+#
+set group_concat_max_len= 4294967295;
+set @obj=concat('{', repeat('"a":"b",', 12500000), '"c":"d"}');
+set @arr=concat('[', repeat('1234567,', 12500000), '2345678]');
+select length(@obj), length(@arr);
+length(@obj)	length(@arr)
+100000009	100000009
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_array_append(@arr, '$[0]', 1);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_array_insert(@arr, '$[0]', 1);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_insert(@obj, '$.meta', 1);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_compact(@arr);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_detailed(@arr);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_loose(@arr);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_merge(@obj, @arr);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_merge_patch(@obj, @obj);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_merge_preserve(@obj, @arr);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_remove(@obj,'$.foo');
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_replace(@obj,'$.foo',1);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+set statement max_statement_time= 1 for select json_set(@arr,'$[1000]',1);
+ERROR 70100: Query execution was interrupted (max_statement_time exceeded)
+select greatest(unix_timestamp()-@now, 2);
+greatest(unix_timestamp()-@now, 2)
+2
+set @now=unix_timestamp();
+disconnect u;
+connection default;
+set group_concat_max_len= default;
+set global max_allowed_packet=default;
+#
+# End of 10.5 tests
+#
