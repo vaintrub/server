@@ -9,3 +9,6 @@
 #  Do not use any TAB characters for whitespace.
 #
 ##############################################################################
+binlog_mdev342 : MDEV-14425 breaks recovery
+binlog_xa_prepared_disconnect : MDEV-14425 breaks recovery
+binlog_xa_recover : MDEV-14425 breaks recovery

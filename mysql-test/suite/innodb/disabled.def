@@ -11,3 +11,47 @@
 ##############################################################################
 
 create-index-debug : MDEV-13680 InnoDB may crash when btr_page_alloc() fails
+101_compatibility : MDEV-14425 breaks recovery
+alter_copy : MDEV-14425 breaks recovery
+alter_crash : MDEV-14425 breaks recovery
+alter_foreign_crash : MDEV-14425 breaks recovery
+alter_kill : MDEV-14425 breaks recovery
+autoinc_persist : MDEV-14425 breaks recovery
+blob-crash : MDEV-14425 breaks recovery
+corrupted_during_recovery : MDEV-14425 breaks recovery
+doublewrite : MDEV-14425 breaks recovery
+group_commit_binlog_pos : MDEV-14425 breaks recovery
+group_commit_binlog_pos_no_optimize_thread : MDEV-14425 breaks recovery
+group_commit_crash : MDEV-14425 breaks recovery
+group_commit_crash_no_optimize_thread : MDEV-14425 breaks recovery
+innodb-32k-crash : MDEV-14425 breaks recovery
+innodb-64k-crash : MDEV-14425 breaks recovery
+innodb-alter-tempfile : MDEV-14425 breaks recovery
+innodb-blob : MDEV-14425 breaks recovery
+innodb-change-buffer-recovery : MDEV-14425 breaks recovery
+innodb-index : MDEV-14425 breaks recovery
+innodb-wl5522-debug : MDEV-14425 breaks recovery
+innodb_bug53756 : MDEV-14425 breaks recovery
+innodb_bug59641 : MDEV-14425 breaks recovery
+innodb_bulk_create_index_debug : MDEV-14425 breaks recovery
+innodb_force_recovery : MDEV-14425 breaks recovery
+innodb_force_recovery_rollback : MDEV-14425 breaks recovery
+instant_alter_crash : MDEV-14425 breaks recovery
+instant_alter_rollback : MDEV-14425 breaks recovery
+leaf_page_corrupted_during_recovery : MDEV-14425 breaks recovery
+log_data_file_size : MDEV-14425 breaks recovery
+log_file_name : MDEV-14425 breaks recovery
+log_file_name_debug : MDEV-14425 breaks recovery
+log_file_size : MDEV-14425 breaks recovery
+read_only_recover_committed : MDEV-14425 breaks recovery
+read_only_recovery : MDEV-14425 breaks recovery
+recovery_shutdown : MDEV-14425 breaks recovery
+redo_log_during_checkpoint : MDEV-14425 breaks recovery
+rename_table_debug : MDEV-14425 breaks recovery
+table_flags : MDEV-14425 breaks recovery
+truncate_crash : MDEV-14425 breaks recovery
+undo_truncate_recover : MDEV-14425 breaks recovery
+update_time : MDEV-14425 breaks recovery
+xa_debug : MDEV-14425 breaks recovery
+xa_recovery : MDEV-14425 breaks recovery
+xa_recovery_debug : MDEV-14425 breaks recovery

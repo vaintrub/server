@@ -5852,7 +5852,6 @@ add_all_virtual:
 	dtuple_t* entry = index->instant_metadata(*row, ctx->heap);
 	mtr_t	mtr;
 	mtr.start();
-	index->set_modified(mtr);
 	btr_pcur_t pcur;
 	btr_pcur_open_at_index_side(true, index, BTR_MODIFY_TREE, &pcur, true,
 				    0, &mtr);
@@ -5975,7 +5974,6 @@ empty_table:
 	/* Convert the table to the instant ALTER TABLE format. */
 	mtr.commit();
 	mtr.start();
-	index->set_modified(mtr);
 	if (buf_block_t* root = btr_root_block_get(index, RW_SX_LATCH, &mtr)) {
 		if (fil_page_get_type(root->frame) != FIL_PAGE_INDEX) {
 			DBUG_ASSERT("wrong page type" == 0);
@@ -5985,7 +5983,6 @@ empty_table:
 		btr_set_instant(root, *index, &mtr);
 		mtr.commit();
 		mtr.start();
-		index->set_modified(mtr);
 		err = row_ins_clust_index_entry_low(
 			BTR_NO_LOCKING_FLAG, BTR_MODIFY_TREE, index,
 			index->n_uniq, entry, 0, thr);
@@ -10480,7 +10477,6 @@ commit_cache_norebuild(
 					const auto sf = space->flags
 						& ~FSP_FLAGS_MEM_MASK;
 					if (mach_read_from_4(f) != sf) {
-						mtr.set_named_space(space);
 						mtr.write<4,mtr_t::FORCED>(
 							*b, f, sf);
 					}

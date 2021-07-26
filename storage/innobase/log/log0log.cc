@@ -871,8 +871,6 @@ ATTRIBUTE_COLD void log_write_checkpoint_info(lsn_t end_lsn)
 	ut_ad(!srv_read_only_mode);
 	ut_ad(end_lsn == 0 || end_lsn >= log_sys.next_checkpoint_lsn);
 	ut_ad(end_lsn <= log_sys.get_lsn());
-	ut_ad(end_lsn + SIZE_OF_FILE_CHECKPOINT <= log_sys.get_lsn()
-	      || srv_shutdown_state > SRV_SHUTDOWN_INITIATED);
 
 	DBUG_PRINT("ib_log", ("checkpoint " UINT64PF " at " LSN_PF
 			      " written",
@@ -1159,9 +1157,7 @@ wait_suspend_loop:
 
 		lsn = log_sys.get_lsn();
 
-		const bool lsn_changed = lsn != log_sys.last_checkpoint_lsn
-			&& lsn != log_sys.last_checkpoint_lsn
-			+ SIZE_OF_FILE_CHECKPOINT;
+		const bool lsn_changed = lsn != log_sys.last_checkpoint_lsn;
 		ut_ad(lsn >= log_sys.last_checkpoint_lsn);
 
 		mysql_mutex_unlock(&log_sys.mutex);

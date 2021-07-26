@@ -418,10 +418,7 @@ row_mtr_start(mtr_t* mtr, dict_index_t* index, bool pessimistic)
 		break;
 	case SRV_TMP_SPACE_ID:
 		mtr->set_log_mode(MTR_LOG_NO_REDO);
-		break;
-	default:
-		index->set_modified(*mtr);
-		break;
+		return;
 	}
 
 	log_free_check();

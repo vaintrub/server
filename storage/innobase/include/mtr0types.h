@@ -303,15 +303,14 @@ enum mfile_type_t
   FILE_MODIFY = 0xb0,
 #if 1 /* MDEV-14425 FIXME: Remove this! */
   /** End-of-checkpoint marker. Followed by 2 dummy bytes of page identifier,
-  8 bytes of LSN, and padded with a NUL; @see SIZE_OF_FILE_CHECKPOINT. */
+  8 bytes of LSN, and padded with a NUL; @see SIZE_OF_CHECKPOINT. */
   FILE_CHECKPOINT = 0xf0
 #endif
 };
 
 #if 1 /* MDEV-14425 FIXME: Remove this! */
-/** Size of a FILE_CHECKPOINT record, including the trailing byte to
-terminate the mini-transaction. */
-constexpr byte SIZE_OF_FILE_CHECKPOINT= 3/*type,page_id*/ + 8/*LSN*/ + 1;
+/** Size of a FILE_CHECKPOINT record, including the checksum. */
+constexpr byte SIZE_OF_CHECKPOINT= 3/*type,page_id*/ + 8/*LSN*/ + 4;
 #endif
 
 #ifndef UNIV_INNOCHECKSUM

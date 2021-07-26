@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2019, 2020, MariaDB Corporation.
+Copyright (c) 2019, 2021, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -386,7 +386,6 @@ inline byte *mtr_t::log_write(const page_id_t id, const buf_page_t *bpage,
 {
   static_assert(!(type & 15) && type != RESERVED && type != OPTION &&
                 type <= FILE_CHECKPOINT, "invalid type");
-  ut_ad(type >= FILE_CREATE || is_named_space(id.space()));
   ut_ad(!bpage || bpage->id() == id);
   constexpr bool have_len= type != INIT_PAGE && type != FREE_PAGE;
   constexpr bool have_offset= type == WRITE || type == MEMSET ||
@@ -512,7 +511,6 @@ inline void mtr_t::memcpy(const buf_block_t &b, void *dest, const void *str,
 inline void mtr_t::init(buf_block_t *b)
 {
   const page_id_t id{b->page.id()};
-  ut_ad(is_named_space(id.space()));
   ut_ad(!m_freed_pages == !m_freed_space);
 
   if (UNIV_LIKELY_NULL(m_freed_space) &&
@@ -542,7 +540,6 @@ inline void mtr_t::init(buf_block_t *b)
 @param[in]	offset	page offset to be freed */
 inline void mtr_t::free(fil_space_t &space, uint32_t offset)
 {
-  ut_ad(is_named_space(&space));
   ut_ad(!m_freed_space || m_freed_space == &space);
 
   if (m_log_mode == MTR_LOG_ALL)

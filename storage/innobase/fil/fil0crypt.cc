@@ -1046,7 +1046,6 @@ func_exit:
 		}
 
 		/* 3 - write crypt data to page 0 */
-		mtr.set_named_space(space);
 		crypt_data->write_page0(block, &mtr);
 
 		mtr.commit();
@@ -1830,8 +1829,6 @@ fil_crypt_rotate_page(
 				kv,
 				key_state->key_version,
 				key_state->rotate_key_age)) {
-
-			mtr.set_named_space(space);
 			modified = true;
 
 			/* force rotation by dummy updating page */
@@ -1971,7 +1968,6 @@ fil_crypt_flush_space(
 		    page_id_t(space->id, 0), space->zip_size(),
 		    RW_X_LATCH, NULL, BUF_GET_POSSIBLY_FREED, &mtr)) {
 		if (block->page.status != buf_page_t::FREED) {
-			mtr.set_named_space(space);
 			crypt_data->write_page0(block, &mtr);
 		}
 	}

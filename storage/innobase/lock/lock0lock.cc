@@ -4734,7 +4734,6 @@ lock_rec_insert_check_and_lock(
 				record */
 {
   ut_ad(block->frame == page_align(rec));
-  ut_ad(mtr->is_named_space(index->table->space));
   ut_ad(page_is_leaf(block->frame));
   ut_ad(!index->table->is_temporary());
 
@@ -5092,7 +5091,6 @@ lock_sec_rec_modify_check_and_lock(
 	ut_ad(!dict_index_is_clust(index));
 	ut_ad(!dict_index_is_online_ddl(index) || (flags & BTR_CREATE_FLAG));
 	ut_ad(block->frame == page_align(rec));
-	ut_ad(mtr->is_named_space(index->table->space));
 	ut_ad(page_rec_is_leaf(rec));
 	ut_ad(!rec_is_metadata(rec, *index));
 

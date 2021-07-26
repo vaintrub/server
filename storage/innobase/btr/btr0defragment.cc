@@ -656,7 +656,6 @@ processed:
 		log_free_check();
 		mtr_start(&mtr);
 		dict_index_t *index = item->pcur->btr_cur.index;
-		index->set_modified(mtr);
 		/* To follow the latching order defined in WL#6326, acquire index->lock X-latch.
 		This entitles us to acquire page latches in any order for the index. */
 		mtr_x_lock_index(index, &mtr);

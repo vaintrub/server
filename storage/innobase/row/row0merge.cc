@@ -149,7 +149,6 @@ public:
 			}
 
 			mtr.start();
-			m_index->set_modified(mtr);
 
 			ins_cur.index = m_index;
 			rtr_init_rtr_info(&rtr_info, false, &ins_cur, m_index,
@@ -170,7 +169,6 @@ public:
 						  m_index, false);
 				rtr_info_update_btr(&ins_cur, &rtr_info);
 				mtr_start(&mtr);
-				m_index->set_modified(mtr);
 				btr_cur_search_to_nth_level(
 					m_index, 0, dtuple,
 					PAGE_CUR_RTREE_INSERT,
@@ -185,7 +183,6 @@ public:
 				ut_ad(!big_rec);
 				mtr.commit();
 				mtr.start();
-				m_index->set_modified(mtr);
 
 				rtr_clean_rtr_info(&rtr_info, true);
 				rtr_init_rtr_info(&rtr_info, false,

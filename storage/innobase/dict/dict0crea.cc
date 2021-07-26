@@ -763,8 +763,6 @@ dict_create_index_tree_step(
 	if (!index->is_readable()) {
 		node->page_no = FIL_NULL;
 	} else {
-		index->set_modified(mtr);
-
 		node->page_no = btr_create(
 			index->type, index->table->space,
 			index->id, index, &mtr);

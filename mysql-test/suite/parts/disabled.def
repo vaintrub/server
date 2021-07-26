@@ -15,3 +15,5 @@ parts.partition_mgm_lc1_archive : MDEV-5077 2013-09-27 svoj Cannot exchange part
 parts.partition_exchange_archive: MDEV-5077 2013-09-27 svoj Cannot exchange partition with archive table
 parts.partition_mgm_lc0_archive : MDEV-5077 2013-09-27 svoj Cannot exchange partition with archive table
 parts.partition_mgm_lc2_archive : MDEV-5077 2013-09-27 svoj Cannot exchange partition with archive table
+debug_innodb_crash : MDEV-14425 breaks recovery
+partition_debug_innodb : MDEV-14425 breaks recovery

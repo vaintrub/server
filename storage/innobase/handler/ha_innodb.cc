@@ -17238,7 +17238,6 @@ func_exit:
 	}
 
 	mtr.start();
-	mtr.set_named_space(space);
 
 	buf_block_t*	block = buf_page_get(
 		page_id_t(space_id, srv_saved_page_number_debug),
@@ -18008,7 +18007,6 @@ checkpoint_now_set(THD*, st_mysql_sys_var*, void*, const void* save)
 
 		while (log_sys.last_checkpoint_lsn.load(
 			       std::memory_order_acquire)
-		       + SIZE_OF_FILE_CHECKPOINT
 		       < (lsn= log_sys.get_lsn(std::memory_order_acquire))) {
 			log_make_checkpoint();
 			log_sys.log.flush();

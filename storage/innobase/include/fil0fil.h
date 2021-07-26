@@ -45,7 +45,6 @@ Created 10/25/1995 Heikki Tuuri
 struct unflushed_spaces_tag_t;
 struct default_encrypt_tag_t;
 struct space_list_tag_t;
-struct named_spaces_tag_t;
 
 using space_list_t= ilist<fil_space_t, space_list_tag_t>;
 
@@ -337,8 +336,7 @@ enum fil_encryption_t
 
 struct fil_space_t final : ilist_node<unflushed_spaces_tag_t>,
                            ilist_node<default_encrypt_tag_t>,
-                           ilist_node<space_list_tag_t>,
-                           ilist_node<named_spaces_tag_t>
+                           ilist_node<space_list_tag_t>
 #else
 struct fil_space_t final
 #endif
@@ -354,20 +352,15 @@ struct fil_space_t final
 
   /** fil_system.spaces chain node */
   fil_space_t *hash;
-	lsn_t		max_lsn;
-				/*!< LSN of the most recent
-				fil_names_write_if_was_clean().
-				Reset to 0 by fil_names_clear().
-				Protected by log_sys.mutex.
-				If and only if this is nonzero, the
-				tablespace will be in named_spaces. */
+  /** link node for multi-file tablespaces (system or temprorary) */
+  UT_LIST_BASE_NODE_T(fil_node_t) chain;
+  /** whether undo tablespace truncation is in progress */
+  bool is_being_truncated;
+  /** use of the tablespace */
+  fil_type_t purpose;
   /** tablespace identifier */
   uint32_t id;
-	/** whether undo tablespace truncation is in progress */
-	bool		is_being_truncated;
-	fil_type_t	purpose;/*!< purpose */
-	UT_LIST_BASE_NODE_T(fil_node_t) chain;
-				/*!< base node for the file chain */
+
 	uint32_t	size;	/*!< tablespace file size in pages;
 				0 if not known yet */
 	uint32_t	size_in_header;
@@ -1396,17 +1389,10 @@ public:
   /** maximum persistent tablespace id that has ever been assigned */
   uint32_t max_assigned_id;
   /** nonzero if fil_node_open_file_low() should avoid moving the tablespace
-  to the end of space_list, for FIFO policy of try_to_close() */
-  ulint freeze_space_list;
+  to the end of space_list, for FIFO policy of try_to_close(); */
+  uint32_t freeze_space_list;
+  /** list of all tablespaces */
   ilist<fil_space_t, space_list_tag_t> space_list;
-					/*!< list of all file spaces */
-  ilist<fil_space_t, named_spaces_tag_t> named_spaces;
-					/*!< list of all file spaces
-					for which a FILE_MODIFY
-					record has been written since
-					the latest redo log checkpoint.
-					Protected only by log_sys.mutex. */
-
   /** list of all ENCRYPTED=DEFAULT tablespaces that need
   to be converted to the current value of innodb_encrypt_tables */
   ilist<fil_space_t, default_encrypt_tag_t> default_encrypt_tables;
@@ -1696,55 +1682,6 @@ fil_delete_file(
 @return tablespace
 @retval nullptr if not found */
 fil_space_t *fil_space_get_by_id(uint32_t id);
-
-/** Note that a non-predefined persistent tablespace has been modified
-by redo log.
-@param[in,out]	space	tablespace */
-void
-fil_names_dirty(
-	fil_space_t*	space);
-
-/** Write FILE_MODIFY records when a non-predefined persistent
-tablespace was modified for the first time since the latest
-fil_names_clear().
-@param[in,out]	space	tablespace */
-void fil_names_dirty_and_write(fil_space_t* space);
-
-/** Write FILE_MODIFY records if a persistent tablespace was modified
-for the first time since the latest fil_names_clear().
-@param[in,out]	space	tablespace
-@param[in,out]	mtr	mini-transaction
-@return whether any FILE_MODIFY record was written */
-inline bool fil_names_write_if_was_clean(fil_space_t* space)
-{
-	mysql_mutex_assert_owner(&log_sys.mutex);
-
-	if (space == NULL) {
-		return(false);
-	}
-
-	const bool	was_clean = space->max_lsn == 0;
-	ut_ad(space->max_lsn <= log_sys.get_lsn());
-	space->max_lsn = log_sys.get_lsn();
-
-	if (was_clean) {
-		fil_names_dirty_and_write(space);
-	}
-
-	return(was_clean);
-}
-
-/** On a log checkpoint, reset fil_names_dirty_and_write() flags
-and write out FILE_MODIFY and FILE_CHECKPOINT if needed.
-@param[in]	lsn		checkpoint LSN
-@param[in]	do_write	whether to always write FILE_CHECKPOINT
-@return whether anything was written to the redo log
-@retval false	if no flags were set and nothing written
-@retval true	if anything was written to the redo log */
-bool
-fil_names_clear(
-	lsn_t	lsn,
-	bool	do_write);
 
 #ifdef UNIV_ENABLE_UNIT_TEST_MAKE_FILEPATH
 void test_make_filepath();

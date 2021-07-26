@@ -2158,7 +2158,6 @@ page_cur_delete_rec(
 	ut_ad(mach_read_from_8(PAGE_HEADER + PAGE_INDEX_ID + block->frame)
 	      == index->id
 	      || mtr->is_inside_ibuf());
-	ut_ad(mtr->is_named_space(index->table->space));
 
 	/* The record must not be the supremum or infimum record. */
 	ut_ad(page_rec_is_user_rec(current_rec));

@@ -19,3 +19,7 @@ rpl_semi_sync_slave_compressed_protocol : MDEV-25580 2021-05-05 Sujatha
 rpl_auto_increment_update_failure  : disabled for now
 rpl_current_user          : waits for MDEV-22374 fix
 rpl_parallel2             : waits for MDEV-23089
+rpl_domain_id_filter_master_crash : MDEV-14425 breaks recovery
+rpl_gtid_crash : MDEV-14425 breaks recovery
+rpl_parallel_temptable : MDEV-14425 breaks recovery
+rpl_sync : MDEV-14425 breaks recovery

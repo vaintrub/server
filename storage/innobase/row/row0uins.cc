@@ -96,7 +96,6 @@ restart:
 		ut_ad(index->table->id >= DICT_HDR_FIRST_ID);
 		online = false;
 	} else {
-		index->set_modified(mtr);
 		ut_ad(lock_table_has_locks(index->table));
 		online = dict_index_is_online_ddl(index);
 		if (online) {
@@ -235,8 +234,6 @@ retry:
 	mtr.start();
 	if (index->table->is_temporary()) {
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-	} else {
-		index->set_modified(mtr);
 	}
 
 	success = btr_pcur_restore_position(

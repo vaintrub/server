@@ -1699,50 +1699,16 @@ static bool log_checkpoint_low(lsn_t oldest_lsn, lsn_t end_lsn)
 
   ut_ad(oldest_lsn >= log_sys.last_checkpoint_lsn);
 
-  if (oldest_lsn > log_sys.last_checkpoint_lsn + SIZE_OF_FILE_CHECKPOINT)
-    /* Some log has been written since the previous checkpoint. */;
-  else if (srv_shutdown_state > SRV_SHUTDOWN_INITIATED)
-    /* MariaDB startup expects the redo log file to be logically empty
-    (not even containing a FILE_CHECKPOINT record) after a clean shutdown.
-    Perform an extra checkpoint at shutdown. */;
-  else
+  if (oldest_lsn <= log_sys.last_checkpoint_lsn)
   {
-    /* Do nothing, because nothing was logged (other than a
-    FILE_CHECKPOINT record) since the previous checkpoint. */
+    /* Do nothing, because nothing was logged since the previous checkpoint. */
     mysql_mutex_unlock(&log_sys.mutex);
     return true;
   }
 
-  /* Repeat the FILE_MODIFY records after the checkpoint, in case some
-  log records between the checkpoint and log_sys.lsn need them.
-  Finally, write a FILE_CHECKPOINT record. Redo log apply expects to
-  see a FILE_CHECKPOINT after the checkpoint, except on clean
-  shutdown, where the log will be empty after the checkpoint.
-
-  It is important that we write out the redo log before any further
-  dirty pages are flushed to the tablespace files.  At this point,
-  because we hold log_sys.mutex, mtr_t::commit() in other threads will
-  be blocked, and no pages can be added to the flush lists. */
-  lsn_t flush_lsn= oldest_lsn;
-
-  if (fil_names_clear(flush_lsn, oldest_lsn != end_lsn ||
-                      srv_shutdown_state <= SRV_SHUTDOWN_INITIATED))
-  {
-    flush_lsn= log_sys.get_lsn();
-    ut_ad(flush_lsn >= end_lsn + SIZE_OF_FILE_CHECKPOINT);
-    mysql_mutex_unlock(&log_sys.mutex);
-    log_write_up_to(flush_lsn, true, true);
-    mysql_mutex_lock(&log_sys.mutex);
-    if (log_sys.last_checkpoint_lsn >= oldest_lsn)
-    {
-      mysql_mutex_unlock(&log_sys.mutex);
-      return true;
-    }
-  }
-  else
-    ut_ad(oldest_lsn >= log_sys.last_checkpoint_lsn);
-
-  ut_ad(log_sys.get_flushed_lsn() >= flush_lsn);
+#if 0 // MDEV-14425 FIXME: retain the LSN in create_log_file()
+  ut_ad(log_sys.get_flushed_lsn() >= oldest_lsn);
+#endif
 
   if (log_sys.n_pending_checkpoint_writes)
   {
@@ -1941,7 +1907,7 @@ ATTRIBUTE_COLD static void buf_flush_sync_for_checkpoint(lsn_t lsn)
     mysql_mutex_unlock(&log_sys.flush_order_mutex);
     const lsn_t checkpoint_lsn= measure ? measure : newest_lsn;
 
-    if (checkpoint_lsn > log_sys.last_checkpoint_lsn + SIZE_OF_FILE_CHECKPOINT)
+    if (checkpoint_lsn > log_sys.last_checkpoint_lsn)
     {
       mysql_mutex_unlock(&buf_pool.flush_list_mutex);
       log_checkpoint_low(checkpoint_lsn, newest_lsn);

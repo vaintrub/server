@@ -3236,8 +3236,6 @@ btr_cur_ins_lock_and_undo(
 	ut_ad((flags & BTR_NO_UNDO_LOG_FLAG)
 	      || !index->table->skip_alter_undo);
 
-	ut_ad(mtr->is_named_space(index->table->space));
-
 	/* Check if there is predicate or GAP lock preventing the insertion */
 	if (!(flags & BTR_NO_LOCKING_FLAG)) {
 		const unsigned type = index->type;
@@ -3863,7 +3861,6 @@ btr_cur_upd_lock_and_undo(
 	index = cursor->index;
 
 	ut_ad(rec_offs_validate(rec, index, offsets));
-	ut_ad(mtr->is_named_space(index->table->space));
 
 	if (!dict_index_is_clust(index)) {
 		ut_ad(dict_index_is_online_ddl(index)
@@ -5377,7 +5374,6 @@ btr_cur_del_mark_set_clust_rec(
 	ut_ad(!!page_rec_is_comp(rec) == dict_table_is_comp(index->table));
 	ut_ad(buf_block_get_frame(block) == page_align(rec));
 	ut_ad(page_rec_is_leaf(rec));
-	ut_ad(mtr->is_named_space(index->table->space));
 
 	if (rec_get_deleted_flag(rec, rec_offs_comp(offsets))) {
 		/* We may already have delete-marked this record
@@ -5487,7 +5483,6 @@ btr_cur_optimistic_delete_func(
 	ut_ad(flags == 0 || flags == BTR_CREATE_FLAG);
 	ut_ad(mtr->memo_contains_flagged(btr_cur_get_block(cursor),
 					 MTR_MEMO_PAGE_X_FIX));
-	ut_ad(mtr->is_named_space(cursor->index->table->space));
 	ut_ad(!cursor->index->is_dummy);
 
 	/* This is intended only for leaf page deletions */
@@ -5683,7 +5678,6 @@ btr_cur_pessimistic_delete(
 	ut_ad(mtr->memo_contains_flagged(&index->lock, MTR_MEMO_X_LOCK
 					 | MTR_MEMO_SX_LOCK));
 	ut_ad(mtr->memo_contains_flagged(block, MTR_MEMO_PAGE_X_FIX));
-	ut_ad(mtr->is_named_space(index->table->space));
 	ut_ad(!index->is_dummy);
 	ut_ad(block->page.id().space() == index->table->space->id);
 
@@ -7168,7 +7162,6 @@ struct btr_blob_log_check_t {
 		const mtr_log_t log_mode = m_mtr->get_log_mode();
 		m_mtr->start();
 		m_mtr->set_log_mode(log_mode);
-		index->set_modified(*m_mtr);
 
 		if (UNIV_UNLIKELY(page_no != FIL_NULL)) {
 			m_pcur->btr_cur.page_cur.block = btr_block_get(
@@ -7349,7 +7342,6 @@ btr_store_big_rec_extern_fields(
 			}
 
 			mtr.start();
-			index->set_modified(mtr);
 			mtr.set_log_mode(btr_mtr->get_log_mode());
 
 			buf_page_get(rec_block->page.id(),
@@ -7667,7 +7659,6 @@ btr_free_externally_stored_field(
 	ut_ad(!rec || rec_offs_validate(rec, index, offsets));
 	ut_ad(!rec || field_ref == btr_rec_get_field_ref(rec, offsets, i));
 	ut_ad(index->table->space_id == index->table->space->id);
-	ut_ad(local_mtr->is_named_space(index->table->space));
 
 	if (UNIV_UNLIKELY(!memcmp(field_ref, field_ref_zero,
 				  BTR_EXTERN_FIELD_REF_SIZE))) {
@@ -7693,7 +7684,6 @@ btr_free_externally_stored_field(
 		buf_block_t*	ext_block;
 
 		mtr_start(&mtr);
-		mtr.set_spaces(*local_mtr);
 		mtr.set_log_mode(local_mtr->get_log_mode());
 
 		ut_ad(!index->table->is_temporary()

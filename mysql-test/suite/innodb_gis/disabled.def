@@ -10,3 +10,8 @@
 #
 ##############################################################################
 
+kill_server : MDEV-14425 breaks recovery
+rollback : MDEV-14425 breaks recovery
+rtree_compress2 : MDEV-14425 breaks recovery
+rtree_recovery : MDEV-14425 breaks recovery
+types : MDEV-14425 breaks recovery

@@ -1860,7 +1860,6 @@ rtr_estimate_n_rows_in_range(
 	mtr_t		mtr;
 
 	mtr.start();
-	index->set_modified(mtr);
 	mtr_s_lock_index(index, &mtr);
 
 	buf_block_t* block = btr_root_block_get(index, RW_S_LATCH, &mtr);

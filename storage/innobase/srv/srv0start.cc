@@ -898,8 +898,6 @@ static lsn_t srv_prepare_to_delete_redo_log_file(bool old_exists)
 
 		mysql_mutex_lock(&log_sys.mutex);
 
-		fil_names_clear(log_sys.get_lsn(), false);
-
 		flushed_lsn = log_sys.get_lsn();
 
 		{

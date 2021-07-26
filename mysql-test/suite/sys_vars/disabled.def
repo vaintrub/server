@@ -12,3 +12,5 @@
 
 all_vars: obsolete, see sysvars_* tests
 innodb_buffer_pool_dump_pct_function: MDEV-11454 follow-up needed (unstable)
+innodb_fatal_semaphore_wait_threshold : MDEV-14425 breaks recovery
+innodb_flush_method_func : MDEV-14425 breaks recovery

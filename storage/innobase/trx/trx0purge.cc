@@ -710,10 +710,8 @@ not_free:
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 
-		/* Associate the undo tablespace with mtr.
-		During mtr::commit(), InnoDB can use the undo
-		tablespace object to clear all freed ranges */
-		mtr.set_named_space(&space);
+		/* During mtr::commit(), InnoDB can use the undo
+		tablespace object to clear all freed ranges. */
 		mtr.trim_pages(page_id_t(space.id, size));
 		fsp_header_init(&space, size, &mtr);
 		mysql_mutex_lock(&fil_system.mutex);
