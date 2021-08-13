@@ -5786,7 +5786,8 @@ int handler::calculate_checksum()
     {
       Field *f= table->field[i];
 
-      if (! thd->variables.old_mode && f->is_real_null(0))
+      if (! (thd->variables.old_behavior & OLD_MODE_CHECKSUM_FORMATTING) &&
+            f->is_real_null(0))
       {
         flush_checksum(&row_crc, &checksum_start, &checksum_length);
         continue;

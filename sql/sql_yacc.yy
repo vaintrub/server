@@ -11700,7 +11700,8 @@ opt_outer:
 index_hint_clause:
           /* empty */
           {
-            $$= thd->variables.old_mode ?  INDEX_HINT_MASK_JOIN : INDEX_HINT_MASK_ALL; 
+            $$= (thd->variables.old_behavior & OLD_MODE_INDEX_MASKING) ?
+                INDEX_HINT_MASK_JOIN : INDEX_HINT_MASK_ALL;
           }
         | FOR_SYM JOIN_SYM      { $$= INDEX_HINT_MASK_JOIN;  }
         | FOR_SYM ORDER_SYM BY  { $$= INDEX_HINT_MASK_ORDER; }
