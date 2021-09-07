@@ -17,7 +17,6 @@ MW-328A : MDEV-22666 galera.MW-328A MTR failed: "Semaphore wait has lasted > 600
 MW-328B : MDEV-22666 galera.MW-328A MTR failed: "Semaphore wait has lasted > 600 seconds" and do not release port 16002
 MW-329 : MDEV-19962 Galera test failure on MW-329
 galera_FK_duplicate_client_insert : MDEV-24473: galera.galera_FK_duplicate_client_insert MTR failed: SIGABRT. InnoDB: Conflicting lock on table. Assertion failure in lock0lock.cc
-galera_applier_ftwrl_table_alter : MDEV-26502 : galera.galera_applier_ftwrl_table_alter MTR failed : Result content mismatch
 galera_as_slave_replication_bundle : MDEV-15785 OPTION_GTID_BEGIN is set in Gtid_log_event::do_apply_event()
 galera_bf_abort_at_after_statement : MDEV-21557: galera_bf_abort_at_after_statement MTR failed: query 'reap' succeeded - should have failed with errno 1213
 galera_bf_abort_group_commit : MDEV-18282 Galera test failure on galera.galera_bf_abort_group_commit
