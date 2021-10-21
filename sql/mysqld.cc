@@ -1522,10 +1522,20 @@ static void kill_thread(THD *thd)
 /**
   First shutdown everything but slave threads and binlog dump connections
 */
-static my_bool kill_thread_phase_1(THD *thd, void *)
+static my_bool kill_thread_phase_1(THD *thd, DYNAMIC_ARRAY *phase_2_kill_threads)
 {
   DBUG_PRINT("quit", ("Informing thread %ld that it's time to die",
                       (ulong) thd->thread_id));
+
+  if (thd->is_awaiting_semisync_ack())
+  {
+    insert_dynamic(phase_2_kill_threads, (const void *) &(thd->thread_id));
+    DBUG_PRINT("quit",
+               ("Thread %ld kill delayed to phase 2", (ulong) thd->thread_id));
+
+    return 0;
+  }
+
   if (thd->slave_thread || thd->is_binlog_dump_thread())
     return 0;
 
@@ -1542,30 +1552,64 @@ static my_bool kill_thread_phase_1(THD *thd, void *)
 /**
   Last shutdown binlog dump connections
 */
-static my_bool kill_thread_phase_2(THD *thd, void *)
+static my_bool kill_thread_phase_2(THD *thd, DYNAMIC_ARRAY *phase_2_kill_threads)
 {
   if (shutdown_wait_for_slaves)
   {
-    thd->set_killed(KILL_SERVER);
+    uint i;
+    long long unsigned int test_tid;
+    bool hard_kill= FALSE;
+
+    for(i= 0; i < phase_2_kill_threads->elements; i++)
+    {
+      get_dynamic(phase_2_kill_threads, (void *)(&test_tid), i);
+      if (test_tid == thd->thread_id)
+      {
+        hard_kill= TRUE;
+        break;
+      }
+    }
+
+    if (!hard_kill)
+    {
+      thd->set_killed(KILL_SERVER);
+      goto end;
+    }
   }
-  else
-  {
-    thd->set_killed(KILL_SERVER_HARD);
-    MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
-  }
+
+  thd->set_killed(KILL_SERVER_HARD);
+  MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
+
+end:
   kill_thread(thd);
   return 0;
 }
 
 
 /* associated with the kill thread phase 1 */
-static my_bool warn_threads_active_after_phase_1(THD *thd, void *)
+static my_bool warn_threads_active_after_phase_1(THD *thd, DYNAMIC_ARRAY *phase_2_kill_threads)
 {
-  if (!thd->is_binlog_dump_thread() && thd->vio_ok())
-    sql_print_warning("%s: Thread %llu (user : '%s') did not exit\n", my_progname,
-                      (ulonglong) thd->thread_id,
-                      (thd->main_security_ctx.user ?
-                       thd->main_security_ctx.user : ""));
+  uint i;
+  long long unsigned int test_tid;
+
+  if (thd->is_binlog_dump_thread() || !thd->vio_ok())
+    goto end;
+
+  /* If the thread is identified for phase 2 kill */
+  for(i= 0; i < phase_2_kill_threads->elements; i++)
+  {
+    get_dynamic(phase_2_kill_threads, (void *)(&test_tid), i);
+    if (test_tid == thd->thread_id)
+      goto end;
+  }
+
+  /* Unknown reason for this thread being alive */
+  sql_print_warning("%s: Thread %llu (user : '%s') did not exit\n", my_progname,
+                    (ulonglong) thd->thread_id,
+                    (thd->main_security_ctx.user ?
+                     thd->main_security_ctx.user : ""));
+
+end:
   return 0;
 }
 
@@ -1727,7 +1771,27 @@ static void close_connections(void)
     This will give the threads some time to gracefully abort their
     statements and inform their clients that the server is about to die.
   */
-  server_threads.iterate(kill_thread_phase_1);
+  DYNAMIC_ARRAY phase_2_hard_kill_threads;
+  my_init_dynamic_array(&phase_2_hard_kill_threads, sizeof(long long unsigned int), 4, 4, MYF(0));
+  server_threads.iterate(kill_thread_phase_1, &phase_2_hard_kill_threads);
+
+  /*
+    If we are waiting on any ACKs, delay killing the thread until either an ACK
+    is received or the timeout is hit.
+
+    Allow at max the number of sessions to await a timeout; however, if all
+    ACKs have been received in less iterations, then quit early
+  */
+  if (shutdown_wait_for_slaves)
+  {
+    int delay_attempts= rpl_semi_sync_master_wait_sessions;
+    if (delay_attempts)
+      sql_print_information("Delaying shutdown to await semi-sync ACK\n");
+
+    while (rpl_semi_sync_master_wait_sessions && (delay_attempts-- > 0))
+      repl_semisync_master.await_slave_reply();
+  }
+  DBUG_EXECUTE_IF("delay_shutdown_phase_2_after_semisync_wait", my_sleep(500000););
 
   Events::deinit();
   slave_prepare_for_shutdown();
@@ -1750,11 +1814,15 @@ static void close_connections(void)
   */
   DBUG_PRINT("info", ("THD_count: %u", THD_count::value()));
 
-  for (int i= 0; (THD_count::value() - binlog_dump_thread_count) && i < 1000; i++)
+  for (int i= 0; (THD_count::value() - binlog_dump_thread_count -
+                  phase_2_hard_kill_threads.elements) &&
+                 i < 1000;
+       i++)
     my_sleep(20000);
 
   if (global_system_variables.log_warnings)
-    server_threads.iterate(warn_threads_active_after_phase_1);
+    server_threads.iterate(warn_threads_active_after_phase_1,
+                           &phase_2_hard_kill_threads);
 
 #ifdef WITH_WSREP
   if (wsrep_inited == 1)
@@ -1763,13 +1831,17 @@ static void close_connections(void)
   }
 #endif
   /* All threads has now been aborted */
-  DBUG_PRINT("quit", ("Waiting for threads to die (count=%u)", THD_count::value()));
+  DBUG_PRINT("quit", ("Waiting for threads to die (count=%u)",
+                      THD_count::value() - binlog_dump_thread_count -
+                          phase_2_hard_kill_threads.elements));
 
-  while (THD_count::value() - binlog_dump_thread_count)
+  while (THD_count::value() - binlog_dump_thread_count -
+         phase_2_hard_kill_threads.elements)
     my_sleep(1000);
 
   /* Kill phase 2 */
-  server_threads.iterate(kill_thread_phase_2);
+  server_threads.iterate(kill_thread_phase_2, &phase_2_hard_kill_threads);
+  delete_dynamic(&phase_2_hard_kill_threads);
   for (uint64 i= 0; THD_count::value(); i++)
   {
     /*

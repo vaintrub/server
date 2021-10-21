@@ -472,6 +472,19 @@ class Repl_semi_sync_master
     m_wait_timeout = wait_timeout;
   }
 
+  /*
+    Calculates a timeout that is m_wait_timeout after start_arg and saves it
+    in out. If start_arg is NULL, the timeout is m_wait_timeout after the
+    current system time.
+  */
+  void create_timeout(struct timespec *out, struct timespec *start_arg);
+
+  /*
+    Blocks the calling thread until the ack_receiver either receives an ACK
+    or times out (from rpl_semi_sync_master_timeout)
+  */
+  void await_slave_reply();
+
   /*set the ACK point, after binlog sync or after transaction commit*/
   void set_wait_point(unsigned long ack_point)
   {

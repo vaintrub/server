@@ -463,6 +463,28 @@ void Repl_semi_sync_master::cleanup()
   delete m_active_tranxs;
 }
 
+void Repl_semi_sync_master::create_timeout(struct timespec *out,
+                                           struct timespec *start_arg)
+{
+  struct timespec *start_ts;
+  struct timespec now_ts;
+  if (!start_arg)
+  {
+    set_timespec(now_ts, 0);
+    start_ts= &now_ts;
+  }
+  else
+  {
+    start_ts= start_arg;
+  }
+
+  long diff_secs= (long) (m_wait_timeout / TIME_THOUSAND);
+  long diff_nsecs= (long) ((m_wait_timeout % TIME_THOUSAND) * TIME_MILLION);
+  long nsecs= start_ts->tv_nsec + diff_nsecs;
+  out->tv_sec= start_ts->tv_sec + diff_secs + nsecs / TIME_BILLION;
+  out->tv_nsec= nsecs % TIME_BILLION;
+}
+
 void Repl_semi_sync_master::lock()
 {
   mysql_mutex_lock(&LOCK_binlog);
@@ -862,13 +884,6 @@ int Repl_semi_sync_master::commit_trx(const char* trx_wait_binlog_name,
                                 m_wait_file_name, (ulong)m_wait_file_pos));
       }
 
-      /* Calcuate the waiting period. */
-      long diff_secs = (long) (m_wait_timeout / TIME_THOUSAND);
-      long diff_nsecs = (long) ((m_wait_timeout % TIME_THOUSAND) * TIME_MILLION);
-      long nsecs = start_ts.tv_nsec + diff_nsecs;
-      abstime.tv_sec = start_ts.tv_sec + diff_secs + nsecs/TIME_BILLION;
-      abstime.tv_nsec = nsecs % TIME_BILLION;
-
       /* In semi-synchronous replication, we wait until the binlog-dump
        * thread has received the reply on the relevant binlog segment from the
        * replication slave.
@@ -876,16 +891,28 @@ int Repl_semi_sync_master::commit_trx(const char* trx_wait_binlog_name,
        * Let us suspend this thread to wait on the condition;
        * when replication has progressed far enough, we will release
        * these waiting threads.
+       *
+       * Additionally, the thread state and system variable which represent
+       * this suspended thread need to be synchronized to ensure this thread is
+       * not immediately killed while awaiting the ACK if a shutdown is issued.
        */
+      mysql_mutex_lock(&thd->LOCK_thd_data);
       rpl_semi_sync_master_wait_sessions++;
+      thd->set_awaiting_semisync_ack(TRUE);
+      mysql_mutex_unlock(&thd->LOCK_thd_data);
 
       DBUG_PRINT("semisync", ("%s: wait %lu ms for binlog sent (%s, %lu)",
                               "Repl_semi_sync_master::commit_trx",
                               m_wait_timeout,
                               m_wait_file_name, (ulong)m_wait_file_pos));
 
+      create_timeout(&abstime, &start_ts);
       wait_result = cond_timewait(&abstime);
+
+      mysql_mutex_lock(&thd->LOCK_thd_data);
       rpl_semi_sync_master_wait_sessions--;
+      thd->set_awaiting_semisync_ack(FALSE);
+      mysql_mutex_unlock(&thd->LOCK_thd_data);
 
       if (wait_result != 0)
       {
@@ -1317,6 +1344,25 @@ void Repl_semi_sync_master::set_export_stats()
                      ((double)rpl_semi_sync_master_net_wait_num)) : 0);
 
   unlock();
+}
+
+void Repl_semi_sync_master::await_slave_reply()
+{
+  struct timespec abstime;
+
+  DBUG_ENTER("Repl_semi_sync_master::::await_slave_reply");
+  lock();
+
+  /* Just return if there is nothing to wait for */
+  if (!rpl_semi_sync_master_wait_sessions)
+    goto end;
+
+  create_timeout(&abstime, NULL);
+  cond_timewait(&abstime);
+
+end:
+  unlock();
+  DBUG_VOID_RETURN;
 }
 
 /* Get the waiting time given the wait's staring time.
