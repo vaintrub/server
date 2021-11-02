@@ -2,6 +2,7 @@
 --source include/have_simple_parser.inc
 # Restart is not supported in embedded
 --source include/not_embedded.inc
+--source include/maybe_versioning.inc
 
 # Install fts parser plugin
 INSTALL PLUGIN simple_parser SONAME 'mypluglib';
