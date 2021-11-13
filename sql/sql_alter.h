@@ -95,6 +95,7 @@ public:
   List<Alter_rename_key>        alter_rename_key_list;
   // List of columns, used by both CREATE and ALTER TABLE.
   List<Create_field>            create_list;
+  uint                          select_field_count;
   List<Virtual_column_info>     check_constraint_list;
   // Type of ALTER TABLE operation.
   alter_table_operations        flags;
@@ -115,6 +116,7 @@ public:
 
 
   Alter_info() :
+  select_field_count(0),
   flags(0), partition_flags(0),
     keys_onoff(LEAVE_AS_IS),
     num_parts(0),
@@ -130,6 +132,7 @@ public:
     alter_rename_key_list.empty();
     create_list.empty();
     check_constraint_list.empty();
+    select_field_count= 0;
     flags= 0;
     partition_flags= 0;
     keys_onoff= LEAVE_AS_IS;
@@ -229,6 +232,11 @@ public:
     algorithm then return alter_algorithm variable value.
    */
   enum_alter_table_algorithm algorithm(const THD *thd) const;
+
+  uint field_count() const
+  {
+    return create_list.elements - select_field_count;
+  }
 
 private:
   Alter_info &operator=(const Alter_info &rhs); // not implemented
