@@ -94,7 +94,8 @@ char *get_tty_password(const char *opt_message)
   }
   *pos=0;
   _cputs("\n");
-  if (!WideCharToMultiByte(GetConsoleCP(), 0 , wbuf , -1 , to, sizeof(to), NULL, NULL))
+  if (!WideCharToMultiByte(GetACP() == CP_UTF8 ? CP_UTF8 : GetConsoleCP(), 0,
+                           wbuf, -1, to, sizeof(to), NULL, NULL))
     to[0]=0;
   DBUG_RETURN(my_strdup(PSI_INSTRUMENT_ME, to,MYF(MY_FAE)));
 }
