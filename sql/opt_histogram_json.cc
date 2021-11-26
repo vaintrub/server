@@ -743,9 +743,22 @@ double Histogram_json_hb::range_selectivity(Field *field, key_range *min_endp,
       idx--;
     }
     double left_fract= get_left_fract(idx);
-    double sel= position_in_interval(field, max_key, max_key_len,
-                                     buckets[idx].start_value,
-                                     get_end_value(idx));
+
+    double sel;
+    /* Special handling for singleton buckets */
+    if (buckets[idx].ndv == 1 && equal)
+    {
+      if (inclusive_endp)
+        sel= 1.0;
+      else
+        sel= 0.0;
+    }
+    else
+    {
+      sel= position_in_interval(field, max_key, max_key_len,
+                                buckets[idx].start_value,
+                                get_end_value(idx));
+    }
     max= left_fract + sel * (buckets[idx].cum_fract - left_fract);
   }
   else
@@ -763,26 +776,18 @@ void Histogram_json_hb::serialize(Field *field)
 
 
 /*
-  Find the rightmost histogram bucket such that "lookup_val $GT start_value".
+  @brief
+   Find the leftmost histogram bucket such that "lookup_val >= start_value".
 
-  $GT is either '>' or '>=' depending on equal_is_less parameter.
+  @param field        Field object (used to do value comparisons)
+  @param lookup_val   The lookup value in KeyTupleFormat.
+  @param equal  OUT   TRUE<=> the found bucket has left_bound=lookup_val
 
-  @param equal_is_less Controls what to do if a histogram bound is equal to the
-                       lookup_val.
-
-  @detail
-    Possible cases:
-    1. The regular case: the value falls into some bucket.
-
-    2. The value is less than the minimum of the first bucket
-    3. The value is greater than the maximum of the last bucket
-      In these cases we "clip" to the first/last bucket.
-
-    4. The value hits the bucket boundary. Then, we need to know whether the
-       point of interest is to the left the constant, or to the right of it.
+  @return
+     The bucket index
 */
 
-int Histogram_json_hb::find_bucket(Field *field, const uchar *lookup_val,
+int Histogram_json_hb::find_bucket(const Field *field, const uchar *lookup_val,
                                    bool *equal)
 {
   int res;
@@ -806,10 +811,10 @@ int Histogram_json_hb::find_bucket(Field *field, const uchar *lookup_val,
   }
 
   /*
-    If low and high were assigned a value in the above loop, then they are not
-    equal to the lookup value:
+    If low and high were assigned a value in the above loop and we got here,
+    then they are not equal to the lookup value:
 
-      bucket[low] < lookup_val < bucket[high]
+      bucket[low].start_value < lookup_val < bucket[high].start_value
 
     But there are two special cases: low=0 and high=last_bucket. Handle them
     below.
