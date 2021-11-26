@@ -301,6 +301,12 @@ unsigned short terminal_width= 80;
 static uint opt_protocol=0;
 static const char *opt_protocol_type= "";
 
+#ifdef _WIN32
+static char *opt_password_codepage;
+#endif
+static const char *maybe_convert_password(const char *passwd);
+
+
 static uint protocol_to_force= MYSQL_PROTOCOL_DEFAULT;
 
 #include "sslopt-vars.h"
@@ -1444,6 +1450,76 @@ sig_handler mysql_end(int sig)
   exit(status.exit_status);
 }
 
+
+/**
+  Convert password from between codepage to another,
+  according to opt_password_codepage.
+
+  Outside of Windows, just returns input string.
+*/
+static const char *maybe_convert_password(const char *passwd)
+{
+#ifndef _WIN32
+  return passwd;
+#else
+
+#define MAX_PASSWD 1024
+  if (!opt_password_codepage || !passwd || !passwd[0])
+    return passwd;
+  wchar_t wbuf[MAX_PASSWD];
+  static char buf[MAX_PASSWD];
+  const char *codepage_str= opt_password_codepage;
+
+  if (!strcmp(opt_password_codepage, "ansi") ||
+      !strcmp(opt_password_codepage, "oem"))
+  {
+    static char cpbuf[32];
+    LCTYPE type= opt_password_codepage[0] == 'a' ? LOCALE_IDEFAULTANSICODEPAGE
+                                                 : LOCALE_IDEFAULTCODEPAGE;
+    GetLocaleInfoA(LOCALE_SYSTEM_DEFAULT, type, cpbuf, sizeof(cpbuf) - 1);
+    codepage_str= cpbuf;
+  }
+  char *end;
+  UINT cp= strtoul(codepage_str, &end, 10);
+  if (*end || !IsValidCodePage(cp))
+  {
+    tee_fprintf(
+        stderr,
+        "Warning : invalid Windows codepage id %s in password-codepage\n",
+        opt_password_codepage);
+    return passwd;
+  }
+  if (!MultiByteToWideChar(tty_password?GetConsoleCP():GetACP(),
+      0, passwd, -1, wbuf, MAX_PASSWD))
+  {
+    tee_fprintf(stderr,
+                "Warning : Failed to convert password to password-codepage\n",
+                opt_password_codepage);
+    return passwd;
+  }
+
+  BOOL used_default_char;
+  int ret= WideCharToMultiByte(cp, 0, wbuf, -1, buf, sizeof(buf), 0,
+                               &used_default_char);
+  if (!ret)
+  {
+    tee_fprintf(stderr,
+                "Warning : Failed to convert password to password-codepage\n",
+                opt_password_codepage);
+    return passwd;
+  }
+
+  if (used_default_char)
+  {
+    tee_fprintf(stderr,
+                "Warning : some characters in password were not convertible "
+                "to password-codepage %s\n",opt_password_codepage);
+  }
+  return buf;
+#undef MAX_PASSWD
+#endif
+}
+
 /*
   set connection-specific options and call mysql_real_connect
 */
@@ -1475,7 +1551,8 @@ static bool do_connect(MYSQL *mysql, const char *host, const char *user,
   mysql_options(mysql, MYSQL_OPT_CONNECT_ATTR_RESET, 0);
   mysql_options4(mysql, MYSQL_OPT_CONNECT_ATTR_ADD,
                  "program_name", "mysql");
-  return mysql_real_connect(mysql, host, user, password, database,
+
+  return mysql_real_connect(mysql, host, user, maybe_convert_password(password), database,
                             opt_mysql_port, opt_mysql_unix_port, flags);
 }
 
@@ -1683,6 +1760,12 @@ static struct my_option my_long_options[] =
    "Password to use when connecting to server. If password is not given it's asked from the tty.",
    0, 0, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #ifdef _WIN32
+  {"password-codepage", 0,
+   "Windows codepage id, originally used to create password. Supported are "
+   "numbers like '850',and also 'ansi' or 'oem'",
+   &opt_password_codepage, &opt_password_codepage, 0, GET_STR, REQUIRED_ARG,
+   0, 0, 0, 0, 0, 0},
+
   {"pipe", 'W', "Use named pipes to connect to server.", 0, 0, 0, GET_NO_ARG,
    NO_ARG, 0, 0, 0, 0, 0, 0},
 #endif
