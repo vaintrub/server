@@ -3389,6 +3389,22 @@ com_clear(String *buffer,char *line __attribute__((unused)))
   return 0;
 }
 
+static void adjust_console_codepage()
+{
+#ifdef _WIN32
+  const char *name= charset_info->cs_name.str;
+  if (my_set_console_cp(default_charset) < 0)
+  {
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+      "WARNING: Could not determine Windows codepage for charset '%s',"
+      "continue using codepage %u", name, GetConsoleOutputCP());
+    put_info(buf, INFO_INFO);
+  }
+#endif
+}
+
+
 	/* ARGSUSED */
 static int
 com_charset(String *buffer __attribute__((unused)), char *line)
@@ -3410,6 +3426,7 @@ com_charset(String *buffer __attribute__((unused)), char *line)
     mysql_set_character_set(&mysql, charset_info->cs_name.str);
     default_charset= (char *)charset_info->cs_name.str;
     put_info("Charset changed", INFO_INFO);
+    adjust_console_codepage();
   }
   else put_info("Charset is not found", INFO_INFO);
   return 0;
@@ -4958,6 +4975,7 @@ sql_real_connect(char *host,char *database,char *user,char *password,
     put_info(buff, INFO_ERROR);
     return 1;
   }
+  adjust_console_codepage();
   connected=1;
 #ifndef EMBEDDED_LIBRARY
   mysql_options(&mysql, MYSQL_OPT_RECONNECT, &debug_info_flag);
