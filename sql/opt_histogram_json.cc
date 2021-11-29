@@ -802,7 +802,8 @@ int Histogram_json_hb::find_bucket(const Field *field, const uchar *lookup_val,
     if (!res)
     {
       *equal= true;
-      return middle;
+      low= middle;
+      goto end;
     }
     else if (res < 0)
       low= middle;
@@ -812,24 +813,24 @@ int Histogram_json_hb::find_bucket(const Field *field, const uchar *lookup_val,
 
   /*
     If low and high were assigned a value in the above loop and we got here,
-    then they are not equal to the lookup value:
+    then the following holds:
 
       bucket[low].start_value < lookup_val < bucket[high].start_value
 
-    But there are two special cases: low=0 and high=last_bucket. Handle them
-    below.
+    Besides that, there are two special cases: low=0 and high=last_bucket.
+    Handle them below.
   */
   if (low == 0)
   {
     res= field->key_cmp((uchar*)buckets[0].start_value.data(), lookup_val);
     if (!res)
       *equal= true;
-    else if (res < 0)
+    else if (res < 0) //  buckets[0] < lookup_val
     {
       res= field->key_cmp((uchar*)buckets[high].start_value.data(), lookup_val);
       if (!res)
         *equal= true;
-      if (res >= 0)
+      if (res <= 0) // buckets[high] <= lookup_val
         low= high;
     }
   }
@@ -838,9 +839,19 @@ int Histogram_json_hb::find_bucket(const Field *field, const uchar *lookup_val,
     res= field->key_cmp((uchar*)buckets[high].start_value.data(), lookup_val);
     if (!res)
       *equal= true;
-    if (res >= 0)
+    if (res <= 0)
       low= high;
   }
 
+end:
+  // Verification: *equal==TRUE <=> lookup value is equal to the found bucket.
+  DBUG_ASSERT(*equal == !(field->key_cmp((uchar*)buckets[low].start_value.data(),
+                                         lookup_val)));
+  // buckets[low] <= lookup_val, with one exception of the first bucket.
+  DBUG_ASSERT(low == 0 ||
+              field->key_cmp((uchar*)buckets[low].start_value.data(), lookup_val)<= 0);
+  // buckets[low+1] > lookup_val, with one exception of the last bucket
+  DBUG_ASSERT(low == (int)buckets.size()-1 ||
+              field->key_cmp((uchar*)buckets[low+1].start_value.data(), lookup_val)> 0);
   return low;
 }
