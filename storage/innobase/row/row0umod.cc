@@ -105,7 +105,7 @@ row_undo_mod_clust_low(
 #ifdef UNIV_DEBUG
 	success =
 #endif /* UNIV_DEBUG */
-	btr_pcur_restore_position(mode, pcur, mtr);
+	pcur->restore_position(mode, mtr);
 
 	ut_ad(success);
 	ut_ad(rec_get_trx_id(btr_cur_get_rec(btr_cur),
@@ -381,7 +381,8 @@ row_undo_mod_clust(
 		ut_ad(node->new_trx_id);
 
 		mtr.start();
-		if (!btr_pcur_restore_position(BTR_MODIFY_LEAF, pcur, &mtr)) {
+		if (pcur->restore_position(BTR_MODIFY_LEAF, &mtr) !=
+		    btr_pcur_t::SAME_ALL) {
 			goto mtr_commit_exit;
 		}
 
@@ -412,9 +413,9 @@ row_undo_mod_clust(
 		}
 
 		mtr.start();
-		if (!btr_pcur_restore_position(
-			    BTR_MODIFY_TREE | BTR_LATCH_FOR_DELETE,
-			    pcur, &mtr)) {
+		if (pcur->restore_position(
+			    BTR_MODIFY_TREE | BTR_LATCH_FOR_DELETE, &mtr) !=
+		    btr_pcur_t::SAME_ALL) {
 			goto mtr_commit_exit;
 		}
 
@@ -447,7 +448,8 @@ row_undo_mod_clust(
 		longer accessible by any active read view. */
 
 		mtr.start();
-		if (!btr_pcur_restore_position(BTR_MODIFY_LEAF, pcur, &mtr)) {
+		if (pcur->restore_position(BTR_MODIFY_LEAF, &mtr)
+		    != btr_pcur_t::SAME_ALL) {
 			goto mtr_commit_exit;
 		}
 		rec_t* rec = btr_pcur_get_rec(pcur);
@@ -554,7 +556,6 @@ row_undo_mod_del_mark_or_remove_sec_low(
 {
 	btr_pcur_t		pcur;
 	btr_cur_t*		btr_cur;
-	ibool			success;
 	dberr_t			err	= DB_SUCCESS;
 	mtr_t			mtr;
 	mtr_t			mtr_vers;
@@ -626,9 +627,8 @@ row_undo_mod_del_mark_or_remove_sec_low(
 
 	mtr_vers.start();
 
-	success = btr_pcur_restore_position(BTR_SEARCH_LEAF, &(node->pcur),
-					    &mtr_vers);
-	ut_a(success);
+	ut_a(node->pcur.restore_position(BTR_SEARCH_LEAF, &mtr_vers) ==
+	      btr_pcur_t::SAME_ALL);
 
 	/* For temporary table, we can skip to check older version of
 	clustered index entry, because there is no MVCC or purge. */

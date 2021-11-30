@@ -1433,8 +1433,9 @@ row_sel_restore_pcur_pos(
 
 	relative_position = btr_pcur_get_rel_pos(&(plan->pcur));
 
-	equal_position = btr_pcur_restore_position(BTR_SEARCH_LEAF,
-						   &(plan->pcur), mtr);
+	equal_position =
+	  plan->pcur.restore_position(BTR_SEARCH_LEAF, mtr) ==
+	  btr_pcur_t::SAME_ALL;
 
 	/* If the cursor is traveling upwards, and relative_position is
 
@@ -3610,13 +3611,11 @@ sel_restore_position_for_mysql(
 	mtr_t*		mtr)		/*!< in: mtr; CAUTION: may commit
 					mtr temporarily! */
 {
-	ibool		success;
+	auto status = pcur->restore_position(latch_mode, mtr);
 
-	success = btr_pcur_restore_position(latch_mode, pcur, mtr);
+	*same_user_rec = status == btr_pcur_t::SAME_ALL;
 
-	*same_user_rec = success;
-
-	ut_ad(!success || pcur->rel_pos == BTR_PCUR_ON);
+	ut_ad(!*same_user_rec || pcur->rel_pos == BTR_PCUR_ON);
 #ifdef UNIV_DEBUG
 	if (pcur->pos_state == BTR_PCUR_IS_POSITIONED_OPTIMISTIC) {
 		ut_ad(pcur->rel_pos == BTR_PCUR_BEFORE
@@ -3632,7 +3631,9 @@ sel_restore_position_for_mysql(
 
 	switch (pcur->rel_pos) {
 	case BTR_PCUR_ON:
-		if (!success && moves_up) {
+		if (!*same_user_rec && moves_up) {
+			if (status == btr_pcur_t::SAME_UNIQ)
+			  return true;
 next:
 			if (btr_pcur_move_to_next(pcur, mtr)
 			    && rec_is_metadata(btr_pcur_get_rec(pcur),
@@ -3642,7 +3643,7 @@ next:
 
 			return true;
 		}
-		return(!success);
+		return(!*same_user_rec);
 	case BTR_PCUR_AFTER_LAST_IN_TREE:
 	case BTR_PCUR_BEFORE_FIRST_IN_TREE:
 		return true;
