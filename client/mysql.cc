@@ -1211,12 +1211,14 @@ static int delimiter_index= -1;
 static int charset_index= -1;
 static bool real_binary_mode= FALSE;
 
-
+#define verbose_printf(...) if (getenv("VERBOSE")) fprintf(stderr, __VA_ARGS__)
 int main(int argc,char *argv[])
 {
   char buff[80];
 
+  verbose_printf("console cp=%u, acp=%u\n",GetConsoleOutputCP(),GetACP());
   MY_INIT(argv[0]);
+  verbose_printf("after my_init: console cp=%u\n",GetConsoleOutputCP());
   DBUG_ENTER("main");
   DBUG_PROCESS(argv[0]);
   
@@ -4944,7 +4946,11 @@ sql_real_connect(char *host,char *database,char *user,char *password,
     mysql_options(&mysql, MYSQL_INIT_COMMAND, init_command);
   }
   if (!strcmp(default_charset,MYSQL_AUTODETECT_CHARSET_NAME))
+  {
+    
     default_charset= (char *)my_default_csname();
+    verbose_printf("autodetected CS name=%s, console cp=%u\n",default_charset,GetConsoleOutputCP());
+  }
   mysql_options(&mysql, MYSQL_SET_CHARSET_NAME, default_charset);
 
   my_bool can_handle_expired= opt_connect_expired_password || !status.batch;
