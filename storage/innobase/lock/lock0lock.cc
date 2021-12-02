@@ -1022,7 +1022,16 @@ lock_rec_other_has_conflicting(
 
 	for (lock_t* lock = lock_sys_t::get_first(cell, id, heap_no);
 	     lock; lock = lock_rec_get_next(heap_no, lock)) {
-		if (lock_rec_has_to_wait(true, trx, mode, lock, is_supremum)) {
+		/* There is no need to lock lock_sys.wait_mutex to check
+		trx->lock.wait_trx because it's also protected with the cell
+		latch. There also can't be lock loops for one record, because
+		all waiting locks of the record  will always wait for the same
+		first lock of the record in a cell array, and check for
+		conflicting lock will always start with the first lock for the
+		heap_no, and go ahead with the same order(the order of the
+		locks in the cell array) */
+		if ((!lock->is_waiting() || lock->trx->lock.wait_trx != trx)
+		    && lock_rec_has_to_wait(true, trx, mode, lock, is_supremum)) {
 			return(lock);
 		}
 	}
