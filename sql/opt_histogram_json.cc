@@ -182,7 +182,7 @@ private:
                 curtime.tm_hour,
                 curtime.tm_min,
                 curtime.tm_sec,
-                curtime.tm_zone);
+                system_time_zone);
 
     writer.add_member("target_histogram_size").add_ull(hist_width);
     writer.add_member("collected_at").add_str(buf);
