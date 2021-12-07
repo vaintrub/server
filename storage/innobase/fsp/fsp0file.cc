@@ -391,7 +391,7 @@ reopen it in write mode and ry to restore that page.
 @retval DB_SUCCESS if tablespace is valid, DB_ERROR if not.
 m_is_valid is also set true on success, else false. */
 dberr_t
-Datafile::validate_for_recovery(uint32_t space_id)
+Datafile::validate_for_recovery()
 {
 	dberr_t err;
 
@@ -434,25 +434,15 @@ Datafile::validate_for_recovery(uint32_t space_id)
 			}
 		}
 
-		bool empty_tablespace= (m_space_id == ULINT_UNDEFINED);
-		if (empty_tablespace && space_id) {
-			/* Set space id to find out whether
-			the page exist in double write buffer */
-			m_space_id = space_id;
+		if (m_space_id == ULINT_UNDEFINED) {
+			return DB_SUCCESS; /* empty file */
 		}
 
 		if (restore_from_doublewrite()) {
-			if (!m_defer) {
-				return DB_CORRUPTION;
-			} else if (!empty_tablespace) {
+			if (m_defer) {
 				return err;
-			} else {
-				/* Reset the space id. InnoDB
-				could rebuild the page0
-				from redo log */
-				m_space_id = ULINT_UNDEFINED;
-				return DB_SUCCESS; /* empty file */
 			}
+			return DB_CORRUPTION;
 		}
 
 		/* Free the previously read first page and then re-validate. */
@@ -780,14 +770,10 @@ Datafile::restore_from_doublewrite()
 		in the doublewrite buffer, then the recovery is going to fail
 		now. Hence this is treated as an error. */
 
-		if (!m_defer) {
-			ib::error()
-				<< "Corrupted page " << page_id
-				<< " of datafile '" << m_filepath
-				<< "' could not be found in the "
-				<< "doublewrite buffer.";
-		}
-
+		ib::error()
+			<< "Corrupted page " << page_id
+			<< " of datafile '" << m_filepath
+			<< "' could not be found in the doublewrite buffer.";
 		return(true);
 	}
 
