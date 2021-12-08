@@ -586,7 +586,16 @@ private:
   binlog_cache_mngr(const binlog_cache_mngr& info);
 };
 
-// TODO: rename and add header
+/**
+  The function handles the first phase of two-phase binlogged ALTER.
+  On master binlogs START ALTER when that is configured to do so.
+  On slave START ALTER gets binlogged and its gtid committed into gtid slave pos
+  table.
+
+  @return  false on success, true on failure
+  @return  @c partial_alter set to @c true when START ALTER phase
+           has been completed
+*/
 bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
                                uint64 start_alter_id, bool if_exists,
                                MEM_ROOT *mem)

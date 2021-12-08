@@ -1962,7 +1962,7 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
       if (charset_inited)
       {
         rpl_sql_thread_info *sql_info= thd->system_thread_info.rpl_sql_info;
-        if (sql_info->cached_charset_compare(charset))
+        if (thd->slave_thread && sql_info->cached_charset_compare(charset))
         {
           /* Verify that we support the charsets found in the event. */
           if (!(thd->variables.character_set_client=
