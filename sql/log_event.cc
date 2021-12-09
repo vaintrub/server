@@ -1424,7 +1424,7 @@ Query_log_event::Query_log_event(const uchar *buf, uint event_len,
    flags2_inited(0), sql_mode_inited(0), charset_inited(0), flags2(0),
    auto_increment_increment(1), auto_increment_offset(1),
    time_zone_len(0), lc_time_names_number(0), charset_database_number(0),
-   table_map_for_update(0), xid(0), master_data_written(0), gtid_extra_flags(0),
+   table_map_for_update(0), xid(0), master_data_written(0), gtid_flags_extra(0),
    sa_seq_no(0)
 {
   ulong data_len;
@@ -1618,11 +1618,10 @@ Query_log_event::Query_log_event(const uchar *buf, uint event_len,
     }
     case Q_GTID_FLAGS3:
     {
-      CHECK_SPACE(pos, end, 2);
-      gtid_extra_flags = uint2korr(pos);
-      pos+= 2;
-      if (gtid_extra_flags & (Log_event::FL_COMMIT_ALTER_E1 |
-                              Log_event::FL_ROLLBACK_ALTER_E1))
+      CHECK_SPACE(pos, end, 1);
+      gtid_flags_extra= *pos++;
+      if (gtid_flags_extra & (Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                              Gtid_log_event::FL_ROLLBACK_ALTER_E1))
       {
         CHECK_SPACE(pos, end, 8);
         sa_seq_no = uint8korr(pos);
@@ -2625,7 +2624,7 @@ Gtid_log_event::Gtid_log_event(const uchar *buf, uint event_len,
       extra engines flags presence is identifed by non-zero byte value
       at this point
     */
-    if (flags_extra & FL_EXTRA_MULTI_ENGINE)
+    if (flags_extra & FL_EXTRA_MULTI_ENGINE_E1)
     {
       DBUG_ASSERT(static_cast<uint>(buf - buf_0) < event_len);
 

@@ -2413,9 +2413,10 @@ static const char *binlog_alter_two_phase_enum[]=
        {"No","Yes", NullS};
 static Sys_var_enum Sys_binlog_alter_two_phase(
        "binlog_alter_two_phase",
-       "If set split the alter into 2 statement START ALTER and COMMIT/ROLLBACK"
-       "ALTER",
-       SESSION_VAR(binlog_alter_two_phase), CMD_LINE(REQUIRED_ARG), binlog_alter_two_phase_enum,
+       "When set, split ALTER at binary logging into 2 statements: "
+       "START ALTER and COMMIT/ROLLBACK ALTER",
+       SESSION_VAR(binlog_alter_two_phase), CMD_LINE(REQUIRED_ARG),
+       binlog_alter_two_phase_enum,
        DEFAULT(0));
 
 static bool

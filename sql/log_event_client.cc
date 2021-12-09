@@ -2034,17 +2034,18 @@ bool Query_log_event::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
     goto err;
   if (!is_flashback)
   {
-    if (gtid_extra_flags & (Log_event::FL_START_ALTER_E1 |
-                            Log_event::FL_COMMIT_ALTER_E1 |
-                            Log_event::FL_ROLLBACK_ALTER_E1))
+    if (gtid_flags_extra & (Gtid_log_event::FL_START_ALTER_E1 |
+                            Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                            Gtid_log_event::FL_ROLLBACK_ALTER_E1))
     {
       bool do_print_encoded=
         print_event_info->base64_output_mode != BASE64_OUTPUT_NEVER &&
         print_event_info->base64_output_mode != BASE64_OUTPUT_DECODE_ROWS &&
         !print_event_info->short_form;
-      bool comment_mode= gtid_extra_flags & (Log_event::FL_START_ALTER_E1 |
-                                             Log_event :: FL_ROLLBACK_ALTER_E1)
-                         && do_print_encoded;
+      bool comment_mode= do_print_encoded &&
+        gtid_flags_extra & (Gtid_log_event::FL_START_ALTER_E1 |
+                            Gtid_log_event::FL_ROLLBACK_ALTER_E1);
+
       if(comment_mode)
         my_b_printf(&cache, "/*!100600 ");
       if (do_print_encoded)

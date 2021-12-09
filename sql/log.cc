@@ -620,7 +620,7 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
     thd->rgi_slave->start_alter_ev->update_pos(thd->rgi_slave);
     if (mysql_bin_log.is_open())
     {
-      Write_log_with_flags wlwf (thd, Log_event::FL_START_ALTER_E1);
+      Write_log_with_flags wlwf (thd, Gtid_log_event::FL_START_ALTER_E1);
       if (write_bin_log(thd, true, thd->query(), thd->query_length()))
       {
         DBUG_ASSERT(thd->is_error());
@@ -642,12 +642,12 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
   {
     /* slave applier can handle here only regular ALTER */
     DBUG_ASSERT(!rgi || !(rgi->gtid_ev_flags_extra &
-                          (Log_event::FL_START_ALTER_E1 |
-                           Log_event::FL_COMMIT_ALTER_E1 |
-                           Log_event::FL_ROLLBACK_ALTER_E1)));
+                          (Gtid_log_event::FL_START_ALTER_E1 |
+                           Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                           Gtid_log_event::FL_ROLLBACK_ALTER_E1)));
 
     // After logging binlog state stays flagged with SA flags3 an seq_no
-    thd->binlog_setup_trx_data()->gtid_flags3|= Log_event::FL_START_ALTER_E1;
+    thd->set_binlog_flags_for_alter(Gtid_log_event::FL_START_ALTER_E1);
     if(write_bin_log_with_if_exists(thd, false, true, if_exists, false))
     {
       DBUG_ASSERT(thd->is_error());
@@ -658,7 +658,7 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
   else if (rgi && rgi->direct_commit_alter)
   {
     DBUG_ASSERT(rgi->gtid_ev_flags_extra &
-                Log_event::FL_COMMIT_ALTER_E1);
+                Gtid_log_event::FL_COMMIT_ALTER_E1);
 
     partial_alter= true;
   }
@@ -6374,7 +6374,7 @@ MYSQL_BIN_LOG::write_gtid_event(THD *thd, bool standalone,
     DBUG_RETURN(true);
 
   thd->set_last_commit_gtid(gtid);
-  if (thd->get_binlog_flags_for_alter() & Log_event::FL_START_ALTER_E1)
+  if (thd->get_binlog_flags_for_alter() & Gtid_log_event::FL_START_ALTER_E1)
     thd->set_binlog_start_alter_seq_no(gtid.seq_no);
 
   Gtid_log_event gtid_event(thd, seq_no, domain_id, standalone,

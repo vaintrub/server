@@ -3931,7 +3931,7 @@ apply_event_and_update_pos_apply(Log_event* ev, THD* thd, rpl_group_info *rgi,
   if (exec_res == 0)
   {
     if (thd->rgi_slave && (thd->rgi_slave->gtid_ev_flags_extra &
-                           Log_event::FL_START_ALTER_E1) &&
+                           Gtid_log_event::FL_START_ALTER_E1) &&
         thd->rgi_slave->get_finish_event_group_called())
       DBUG_RETURN(exec_res ? 1 : 0);
     int error= ev->update_pos(rgi);
@@ -4059,7 +4059,7 @@ apply_event_and_update_pos_for_parallel(Log_event* ev, THD* thd,
 {
   int rc= 0;
   ulong retries= 0;
-  bool  is_sa= rgi->gtid_ev_flags_extra == Log_event::FL_START_ALTER_E1;
+  bool  is_sa= rgi->gtid_ev_flags_extra == Gtid_log_event::FL_START_ALTER_E1;
   bool  is_sa_temp_err= false;
 
   mysql_mutex_assert_not_owner(&rgi->rli->data_lock);

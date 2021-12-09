@@ -1030,7 +1030,7 @@ int write_bin_log_with_if_exists(THD *thd, bool clear_error,
   if (add_if_exists)
     thd->variables.option_bits|= OPTION_IF_EXISTS;
   if (commit_alter)
-    thd->set_binlog_flags_for_alter(Log_event::FL_COMMIT_ALTER_E1);
+    thd->set_binlog_flags_for_alter(Gtid_log_event::FL_COMMIT_ALTER_E1);
 
   result= write_bin_log(thd, clear_error, thd->query(), thd->query_length(),
                         is_trans);
@@ -7340,7 +7340,7 @@ bool write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
   else if (partial_alter) // Write only if SA written
   {
     // Send the rollback message
-    Write_log_with_flags wlwf(thd, Log_event::FL_ROLLBACK_ALTER_E1);
+    Write_log_with_flags wlwf(thd, Gtid_log_event::FL_ROLLBACK_ALTER_E1);
     if(write_bin_log_with_if_exists(thd, false, false, if_exists, false))
       return true;
     partial_alter= false;
@@ -9577,11 +9577,11 @@ static uint64 get_start_alter_id(THD *thd)
 {
   DBUG_ASSERT(!(thd->rgi_slave &&
                 (thd->rgi_slave->gtid_ev_flags_extra &
-                 Log_event::FL_START_ALTER_E1)) ||
+                 Gtid_log_event::FL_START_ALTER_E1)) ||
               !thd->rgi_slave->direct_commit_alter);
   return
     thd->rgi_slave &&
-    (thd->rgi_slave->gtid_ev_flags_extra & Log_event::FL_START_ALTER_E1) ?
+    (thd->rgi_slave->gtid_ev_flags_extra & Gtid_log_event::FL_START_ALTER_E1) ?
     thd->variables.gtid_seq_no : 0;
 }
 

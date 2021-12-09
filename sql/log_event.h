@@ -1197,15 +1197,6 @@ public:
   };
 
   /*
-    _E1 suffix below stands for Extra to infer the extra flags,
-    their "1st" generation (more *generations* can come when necessary).
-    Used in Gtid_log_event as well as Query_log_event
-  */
-  static const uint16 FL_START_ALTER_E1= 2;
-  static const uint16 FL_COMMIT_ALTER_E1= 4;
-  static const uint16 FL_ROLLBACK_ALTER_E1= 8;
-
-  /*
     The following type definition is to be used whenever data is placed 
     and manipulated in a common buffer. Use this typedef for buffers
     that contain data containing binary and character data.
@@ -2163,8 +2154,8 @@ public:
     A copy of Gtid event's extra flags that is relevant for two-phase
     logged ALTER.
   */
-  uint16 gtid_extra_flags;
-  uint64 sa_seq_no;  /* data part for CA/RA flags */
+  uchar gtid_flags_extra;
+  decltype(rpl_gtid::seq_no) sa_seq_no;  /* data part for CA/RA flags */
 
 #ifdef MYSQL_SERVER
 
@@ -3636,7 +3627,12 @@ public:
   event_mysql_xid_t xid;
 #endif
   uchar flags2;
-  uint  flags_extra; // more flags area placed after the regular flags2's one
+  /*
+    More flags area placed after the regular flags2's area. The type
+    is declared to be in agreement with Query_log_event's member that
+    may copy the flags_extra value.
+  */
+  decltype(Query_log_event::gtid_flags_extra) flags_extra;
   /*
     Number of engine participants in transaction minus 1.
     When zero the event does not contain that information.
@@ -3674,14 +3670,19 @@ public:
   /* FL_"COMMITTED or ROLLED-BACK"_XA is set for XA transaction. */
   static const uchar FL_COMPLETED_XA= 128;
 
-  /* Flags_extra. */
-
   /*
-    FL_EXTRA_MULTI_ENGINE is set for event group comprising a transaction
+    flags_extra 's bit values.
+    _E1 suffix below stands for Extra to infer the extra flags,
+    their "1st" generation (more *generations* can come when necessary).
+
+    FL_EXTRA_MULTI_ENGINE_E1 is set for event group comprising a transaction
     involving multiple storage engines. No flag and extra data are added
     to the event when the transaction involves only one engine.
   */
-  static const uchar FL_EXTRA_MULTI_ENGINE= 1;
+  static const uchar FL_EXTRA_MULTI_ENGINE_E1= 1;
+  static const uchar FL_START_ALTER_E1= 2;
+  static const uchar FL_COMMIT_ALTER_E1= 4;
+  static const uchar FL_ROLLBACK_ALTER_E1= 8;
 
 #ifdef MYSQL_SERVER
   Gtid_log_event(THD *thd_arg, uint64 seq_no, uint32 domain_id, bool standalone,

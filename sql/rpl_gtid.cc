@@ -628,7 +628,7 @@ rpl_slave_state::record_gtid(THD *thd, const rpl_gtid *gtid, uint64 sub_id,
     thd->reset_for_next_command();
 
   if (thd->rgi_slave && (thd->rgi_slave->gtid_ev_flags_extra &
-                           Log_event::FL_START_ALTER_E1))
+                         Gtid_log_event::FL_START_ALTER_E1))
   {
     /*
      store the open table table list in ptr, so that is close_thread_tables
@@ -750,7 +750,7 @@ end:
       ha_rollback_trans(thd, FALSE);
     close_thread_tables(thd);
     if (!thd->rgi_slave || !(thd->rgi_slave->gtid_ev_flags_extra &
-                           Log_event::FL_START_ALTER_E1))
+                             Gtid_log_event::FL_START_ALTER_E1))
     {
       if (in_transaction)
         thd->mdl_context.release_statement_locks();

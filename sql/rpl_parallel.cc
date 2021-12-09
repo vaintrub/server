@@ -2238,7 +2238,7 @@ static bool handle_split_alter(rpl_parallel_entry *e,
   uint16 flags_extra= gtid_ev->flags_extra;
   bool thread_allocated= false;
   //Step 1
-  if (flags_extra & Log_event::FL_START_ALTER_E1 || 
+  if (flags_extra & Gtid_log_event::FL_START_ALTER_E1 ||
       //This will arrange finding threads for CA/RA as well
       //as concurrent DDL
       e->pending_start_alters)
@@ -2268,7 +2268,7 @@ idx_found:
     e->rpl_thread_idx= *idx;
     e->choose_thread_internal(*idx, did_enter_cond, rgi, old_stage);
     thread_allocated= true;
-    if (flags_extra & Log_event::FL_START_ALTER_E1)
+    if (flags_extra & Gtid_log_event::FL_START_ALTER_E1)
     {
       mysql_mutex_assert_owner(&e->rpl_threads[*idx]->LOCK_rpl_thread);
       e->rpl_threads[e->rpl_thread_idx]->current_start_alter_id= gtid_ev->seq_no;
@@ -2295,8 +2295,8 @@ idx_found:
       mysql_mutex_unlock(&global_rpl_thread_pool.LOCK_rpl_thread_pool);
     }
   }
-  if(flags_extra & (Log_event::FL_COMMIT_ALTER_E1 |
-                    Log_event::FL_ROLLBACK_ALTER_E1 ))
+  if(flags_extra & (Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                    Gtid_log_event::FL_ROLLBACK_ALTER_E1 ))
   {
     //Free the corrosponding rpt current_start_alter_id
     for(uint i= 0; i < e->rpl_thread_max; i++)
@@ -2612,7 +2612,7 @@ rpl_parallel::wait_for_done(THD *thd, Relay_log_info *rli)
          And remaning SA will never recieve CA/RA so we have to manualy send it
         */
         if (rpt->thd->rgi_slave &&
-           (rpt->thd->rgi_slave->gtid_ev_flags_extra & Log_event::FL_START_ALTER_E1))
+           (rpt->thd->rgi_slave->gtid_ev_flags_extra & Gtid_log_event::FL_START_ALTER_E1))
           continue;
         mysql_mutex_lock(&rpt->LOCK_rpl_thread);
         while (rpt->current_owner == &e->rpl_threads[j])

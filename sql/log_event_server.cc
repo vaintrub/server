@@ -1304,14 +1304,13 @@ bool Query_log_event::write()
     start+= 8;
   }
 
-  if (gtid_extra_flags)
+  if (gtid_flags_extra)
   {
     *start++= Q_GTID_FLAGS3;
-    int2store(start, gtid_extra_flags);
-    start+= 2;
-    if (gtid_extra_flags &
-        (Log_event::FL_COMMIT_ALTER_E1 |
-         Log_event::FL_ROLLBACK_ALTER_E1))
+    buf[start++]= gtid_flags_extra;
+    if (gtid_flags_extra &
+        (Gtid_log_event::FL_COMMIT_ALTER_E1 |
+         Gtid_log_event::FL_ROLLBACK_ALTER_E1))
     {
       int8store(start, sa_seq_no);
       start+= 8;
@@ -1432,7 +1431,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
    charset_database_number(0),
    table_map_for_update((ulonglong)thd_arg->table_map_for_update),
    master_data_written(0),
-   gtid_extra_flags(thd_arg->get_binlog_flags_for_alter()),
+   gtid_flags_extra(thd_arg->get_binlog_flags_for_alter()),
    sa_seq_no(0)
 {
   /* status_vars_len is set just before writing the event */
@@ -1569,13 +1568,13 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
         use_cache= trx_cache= TRUE;
         break;
       default:
-        use_cache= (gtid_extra_flags) ? false : sqlcom_can_generate_row_events(thd);
+        use_cache= (gtid_flags_extra) ? false : sqlcom_can_generate_row_events(thd);
         break;
     }
   }
 
-  if (gtid_extra_flags & (Log_event::FL_COMMIT_ALTER_E1 |
-                          Log_event::FL_ROLLBACK_ALTER_E1))
+  if (gtid_flags_extra & (Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                          Gtid_log_event::FL_ROLLBACK_ALTER_E1))
       sa_seq_no= thd_arg->get_binlog_start_alter_seq_no();
 
   if (!use_cache || direct)
@@ -1686,8 +1685,8 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
 {
   int rc= 0;
 
-  rgi->gtid_ev_flags_extra= gtid_extra_flags;
-  if (gtid_extra_flags & Log_event::FL_START_ALTER_E1)
+  rgi->gtid_ev_flags_extra= gtid_flags_extra;
+  if (gtid_flags_extra & Gtid_log_event::FL_START_ALTER_E1)
   {
     //No Slave, Normal Slave, Start Alter under Worker 1 will simple binlog and exit
     if(!rgi->rpt || rgi->reserved_start_alter_thread)
@@ -1698,7 +1697,7 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
        Alter will take care of actual work
       */
       rgi->reserved_start_alter_thread= false;
-      Write_log_with_flags wlwf(thd, Log_event::FL_START_ALTER_E1);
+      Write_log_with_flags wlwf(thd, Gtid_log_event::FL_START_ALTER_E1);
       if (write_bin_log(thd, false, thd->query(), thd->query_length()))
         return -1;
 
@@ -1719,7 +1718,7 @@ int Query_log_event::handle_split_alter_query_log_event(rpl_group_info *rgi,
     return rc;
   }
 
-  bool is_CA= (gtid_extra_flags & Log_event::FL_COMMIT_ALTER_E1) ? true : false;
+  bool is_CA= (gtid_flags_extra & Gtid_log_event::FL_COMMIT_ALTER_E1) ? true : false;
   if (is_CA)
   {
     DBUG_EXECUTE_IF("rpl_slave_stop_CA_before_binlog",
@@ -1814,8 +1813,8 @@ write_binlog:
     }
   }
   {
-    Write_log_with_flags wlwf(thd, is_CA ? Log_event::FL_COMMIT_ALTER_E1 :
-                              Log_event::FL_ROLLBACK_ALTER_E1);
+    Write_log_with_flags wlwf(thd, is_CA ? Gtid_log_event::FL_COMMIT_ALTER_E1 :
+                              Gtid_log_event::FL_ROLLBACK_ALTER_E1);
     if (write_bin_log(thd, false, thd->query(), thd->query_length()))
       rc= -1;
   }
@@ -1920,7 +1919,7 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
   */
   if (is_trans_keyword() || rpl_filter->db_ok(thd->db.str))
   {
-    bool is_rb_alter= gtid_extra_flags & Log_event::FL_ROLLBACK_ALTER_E1;
+    bool is_rb_alter= gtid_flags_extra & Gtid_log_event::FL_ROLLBACK_ALTER_E1;
 
     thd->set_time(when, when_sec_part);
     thd->set_query_and_id((char*)query_arg, q_len_arg,
@@ -2102,9 +2101,9 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
       }
 
       int sa_result= 0;
-      if (gtid_extra_flags & (Log_event::FL_START_ALTER_E1 |
-                              Log_event::FL_COMMIT_ALTER_E1 |
-                              Log_event::FL_ROLLBACK_ALTER_E1))
+      if (gtid_flags_extra & (Gtid_log_event::FL_START_ALTER_E1 |
+                              Gtid_log_event::FL_COMMIT_ALTER_E1 |
+                              Gtid_log_event::FL_ROLLBACK_ALTER_E1))
         sa_result= handle_split_alter_query_log_event(rgi, skip_error_check);
       if (sa_result == 0)
       {
@@ -3591,13 +3590,12 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
       extra_engines= count > 1 ? 0 : UCHAR_MAX;
     }
     if (extra_engines > 0)
-      flags_extra|= FL_EXTRA_MULTI_ENGINE;
+      flags_extra|= FL_EXTRA_MULTI_ENGINE_E1;
   }
   if (thd->get_binlog_flags_for_alter())
   {
     flags_extra |= thd->get_binlog_flags_for_alter();
-    if (flags_extra & (Log_event::FL_COMMIT_ALTER_E1 |
-                       Log_event::FL_ROLLBACK_ALTER_E1))
+    if (flags_extra & (FL_COMMIT_ALTER_E1 | FL_ROLLBACK_ALTER_E1))
       sa_seq_no= thd->get_binlog_start_alter_seq_no();
     flags2|= FL_DDL;
   }
@@ -3672,7 +3670,7 @@ Gtid_log_event::write()
     buf[write_len]= flags_extra;
     write_len++;
   }
-  if (flags_extra & FL_EXTRA_MULTI_ENGINE)
+  if (flags_extra & FL_EXTRA_MULTI_ENGINE_E1)
   {
     buf[write_len]= extra_engines;
     write_len++;
@@ -3777,7 +3775,6 @@ Gtid_log_event::do_apply_event(rpl_group_info *rgi)
   rgi->gtid_ev_flags2= flags2;
 
   rgi->gtid_ev_flags_extra= flags_extra;
-  //OTODO ?? feels like repeated code. Does choose_worker really need it? When NO - remove
   rgi->gtid_ev_sa_seq_no= sa_seq_no;
   thd->reset_for_next_command();
 
