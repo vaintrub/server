@@ -6,6 +6,8 @@
 # $show_binlog
 #
 --let $force_needed= force ,
+# Error that is caused by a particular ALTER's option combination
+--let $alter_error = 0
 
 --connection slave
 stop slave;
@@ -28,10 +30,35 @@ create temporary table tmp_tbl(a int, b int) engine=innodb;
 #  | ADD [COLUMN] [IF NOT EXISTS] col_name column_definition
 #        [FIRST | AFTER col_name ]
 #  | ADD [COLUMN] [IF NOT EXISTS] (col_name column_definition,...)
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column if not exists c int , $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column d int first, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 add column e int after c, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 add column f int after c, $force_needed add column g int first ,add column  h char, algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop column c, drop column d, drop column e, drop column f, drop column g , drop column h, $force_needed algorithm=$alter_algorithm
 if ($alter_algorithm == 'copy')
 {
@@ -65,16 +92,56 @@ reset master;
 #  | DROP {INDEX|KEY} [IF EXISTS] index_name
 #  | DROP FOREIGN KEY [IF EXISTS] fk_symbol
 #  | DROP CONSTRAINT [IF EXISTS] constraint_name
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column f int after b, $force_needed add column g int first ,add column  h varchar(100), algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table t1 add index if not exists index_1(f), $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop index index_1, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table t1 add unique key unique_1(g), $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop index unique_1, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table t1 add fulltext  key f_1(h), $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1  drop column f, drop column g , $force_needed algorithm=$alter_algorithm
 if ($alter_algorithm == 'copy')
 {
 --eval alter table tmp_tbl add column f int after b, $force_needed add column g int first ,add column  h varchar(100), algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table tmp_tbl add index if not exists index_1(f), $force_needed algorithm=$alter_algorithm
 --eval alter table tmp_tbl drop index index_1, $force_needed algorithm=$alter_algorithm
 --eval alter table tmp_tbl add unique key unique_1(g), $force_needed algorithm=$alter_algorithm
@@ -84,8 +151,23 @@ if ($alter_algorithm == 'copy')
 #  | ADD [CONSTRAINT [symbol]] PRIMARY KEY
 #        [index_type] (index_col_name,...) [index_option] ...
 # primary key changes cant use inplace algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table t1 add primary key(h), $force_needed algorithm=copy
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop primary key, $force_needed algorithm=copy
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1  drop column h, $force_needed algorithm=copy
 if ($alter_algorithm == 'copy')
 {
@@ -106,10 +188,20 @@ reset master;
 #  | ADD PERIOD FOR SYSTEM_TIME (start_column_name, end_column_name)
 #  | ADD SYSTEM VERSIONING
 #  | DROP SYSTEM VERSIONING
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column f varchar(100) after b, add column g varchar(100) first ,add column  h char, $force_needed algorithm=$alter_algorithm
 --eval alter table t1 add period for system_time(f,h)
 --eval alter table t1 add system versioning
 --eval alter table t1 drop system versioning
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1  drop column f, drop column g , drop column h, $force_needed algorithm=$alter_algorithm
 --echo # show binlog and clear status
 if ($alter_algorithm == 'copy')
@@ -132,11 +224,41 @@ reset master;
 #        [FIRST|AFTER col_name]
 #  | MODIFY [COLUMN] [IF EXISTS] col_name column_definition
 #        [FIRST | AFTER col_name]
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column f varchar(100) after b,add column g varchar(100) first ,add column  h char, $force_needed algorithm=$alter_algorithm ;
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 alter column f set default "****", $force_needed algorithm=$alter_algorithm ;
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 alter column f drop default, $force_needed algorithm=$alter_algorithm ;
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 change column g new_g char, $force_needed algorithm=copy;
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 modify column h varchar(100), $force_needed algorithm=copy;
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop column new_g ,drop column f, drop column h, $force_needed algorithm=$alter_algorithm ;
 if ($alter_algorithm == 'copy')
 {
@@ -167,17 +289,47 @@ reset master;
 #   | [DEFAULT] COLLATE [=] collation_name
 #   | DISCARD TABLESPACE
 #   | IMPORT TABLESPACE
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column f varchar(100) after b,add column g varchar(100) first ,add column  h char, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_KEY_COLUMN_DOES_NOT_EXIST
+}
+--error 0,$alter_error
 --eval alter table t1 add index if not exists index_1(f), $force_needed algorithm=$alter_algorithm
 --eval alter table t1 disable keys, $force_needed algorithm=copy
 --eval alter table t1 enable keys, $force_needed algorithm=copy
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 rename t2, $force_needed algorithm=$alter_algorithm
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_NO_SUCH_TABLE
+}
+--error 0,$alter_error
 --eval alter table t2 rename t1, $force_needed algorithm=$alter_algorithm
 --eval alter table a1 order by a
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_BAD_FIELD_ERROR
+}
+--error 0,$alter_error
 --eval alter table t1 rename column f to new_f, $force_needed algorithm=copy
 --eval alter table t1 convert to character set 'utf8', $force_needed algorithm=copy
 --eval alter table t1 default character set 'utf8', $force_needed algorithm=copy
 --eval alter table t1 default collate 'utf8_icelandic_ci', $force_needed algorithm=copy
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop column new_f ,drop column g, drop column h, $force_needed algorithm=$alter_algorithm
 if ($alter_algorithm == 'copy')
 {
@@ -207,9 +359,19 @@ reset master;
 # Only add partition and remove partition is tested
 #  | ADD PARTITION (partition_definition)
 #  | REMOVE PARTITIONING
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_ALTER_OPERATION_NOT_SUPPORTED
+}
+--error 0,$alter_error
 --eval alter table t1 add column f varchar(100) after b,add column g varchar(100) first ,add column  h char, $force_needed algorithm=$alter_algorithm
 --eval alter table t1  partition  by hash(b) partitions 8
 --eval alter table t1  remove partitioning
+if (`select '$alter_algorithm' = 'instant' or  '$alter_algorithm' = 'nocopy'`)
+{
+ --let $alter_error=ER_CANT_DROP_FIELD_OR_KEY
+}
+--error 0,$alter_error
 --eval alter table t1 drop column f ,drop column g, drop column h, $force_needed algorithm=$alter_algorithm
 if ($alter_algorithm == 'copy')
 {

@@ -7476,10 +7476,10 @@ static bool mysql_inplace_alter_table(THD *thd,
                                            MDL_SHARED_NO_WRITE,
                                            thd->variables.lock_wait_timeout))
     goto cleanup;
-  // If alter_algorithm == Instant.
-  if ((table->s->tmp_table == NO_TMP_TABLE || table->s->table_creation_was_logged
-       || start_alter_id)
-      && alter_info->algorithm(thd) != Alter_info::ALTER_TABLE_ALGORITHM_INSTANT)
+
+  DBUG_ASSERT(table->s->tmp_table == NO_TMP_TABLE ||  start_alter_id == 0);
+
+  if (table->s->tmp_table == NO_TMP_TABLE)
     if (write_bin_log_start_alter(thd, partial_alter, start_alter_id,
                                   if_exists, &table->s->mem_root))
       goto cleanup;

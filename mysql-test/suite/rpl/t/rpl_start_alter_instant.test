@@ -1,3 +1,5 @@
+# MDEV-11675
+# Prove that "fast" ALTER options also combine with @@binlog_alter_two_phase.
 --source include/have_innodb.inc
 --source include/master-slave.inc
 
@@ -10,10 +12,19 @@ CREATE OR REPLACE TABLE tab (
 ) CHARACTER SET=latin1 engine=innodb;
 
 SET SESSION alter_algorithm='INSTANT';
+ALTER TABLE tab MODIFY COLUMN b varchar(100);
+SET SESSION alter_algorithm='NOCOPY';
 ALTER TABLE tab MODIFY COLUMN c varchar(100);
-drop table tab;
+SHOW CREATE TABLE tab;
 --source include/show_binlog_events.inc
 
 --sync_slave_with_master
+SHOW CREATE TABLE tab;
 --source include/show_binlog_events.inc
+
+--connection master
+DROP TABLE tab;
+
+--sync_slave_with_master
+
 --source include/rpl_end.inc

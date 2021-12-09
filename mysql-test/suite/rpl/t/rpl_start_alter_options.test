@@ -20,14 +20,12 @@
 --let $alter_algorithm= copy
 --source include/start_alter_options.inc
 
---echo # TODO remove support for nocopy and instant 
---echo # and how to verify results
-#--let $alter_algorithm= nocopy
-#--let $show_binlog= true
-#--source include/start_alter_options.inc
+--echo # Prove formal support for nocopy and instant
+--let $alter_algorithm= instant
+--source include/start_alter_options.inc
 
-#--let $alter_algorithm= instant
-#--let $show_binlog= true
-#--source include/start_alter_options.inc
+--let $alter_algorithm= nocopy
+--source include/start_alter_options.inc
+
 
 --source include/rpl_end.inc
