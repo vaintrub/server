@@ -256,7 +256,6 @@ SELECT * FROM INFORMATION_SCHEMA.ENGINES
 WHERE engine = 'innodb'
 AND support IN ('YES', 'DEFAULT', 'ENABLED');
 ENGINE	SUPPORT	COMMENT	TRANSACTIONS	XA	SAVEPOINTS
-InnoDB	YES	Supports transactions, row-level locking, foreign keys and encryption for tables	YES	YES	YES
 bak_ib_logfile0
 bak_ibdata1
 bak_ibdata2
@@ -264,7 +263,6 @@ bak_undo001
 bak_undo002
 bak_undo003
 ib_buffer_pool
-ib_logfile0
 ibdata1
 ibdata2
 undo001

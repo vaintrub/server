@@ -3247,7 +3247,6 @@ static void xb_load_single_table_tablespace(const char *dirname,
 	size_t	dirlen		= dirname == NULL ? 0 : strlen(dirname);
 	size_t	namelen		= strlen(filname);
 	ulint	pathlen		= dirname == NULL ? namelen + 1: dirlen + namelen + 2;
-	lsn_t	flush_lsn;
 	dberr_t	err;
 	fil_space_t	*space;
 	bool	defer = false;
@@ -3282,7 +3281,7 @@ static void xb_load_single_table_tablespace(const char *dirname,
 
 	for (int i = 0; i < 10; i++) {
 		file->m_defer = false;
-		err = file->validate_first_page(&flush_lsn);
+		err = file->validate_first_page();
 
 		if (file->m_defer) {
 			if (defer_space_id) {
@@ -3801,7 +3800,6 @@ xb_load_tablespaces()
 	bool	create_new_db;
 	dberr_t	err;
 	ulint   sum_of_new_sizes;
-        lsn_t	flush_lsn;
 
 	ut_ad(srv_operation == SRV_OPERATION_BACKUP
 	      || srv_operation == SRV_OPERATION_RESTORE_DELTA);
@@ -3815,8 +3813,7 @@ xb_load_tablespaces()
 	}
 
 	for (int i= 0; i < 10; i++) {
-		err = srv_sys_space.open_or_create(false, false, &sum_of_new_sizes,
-						 &flush_lsn);
+		err = srv_sys_space.open_or_create(false, false, &sum_of_new_sizes);
 		if (err == DB_PAGE_CORRUPTED || err == DB_CORRUPTION) {
 			my_sleep(1000);
 		}

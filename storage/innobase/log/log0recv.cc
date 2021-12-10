@@ -1749,6 +1749,8 @@ dberr_t recv_sys_t::find_checkpoint()
     }
     if (!log_sys.next_checkpoint_lsn)
       goto got_no_checkpoint;
+    if (!strcmp(creator, "mariadb-backup --prepare"))
+      srv_start_after_restore= true;
     return DB_SUCCESS;
   case log_t::FORMAT_10_5:
   case log_t::FORMAT_10_5 | log_t::FORMAT_ENCRYPTED:
@@ -3632,10 +3634,9 @@ done:
 }
 
 /** Start recovering from a redo log checkpoint.
-@param[in]	flush_lsn	FIL_PAGE_FILE_FLUSH_LSN
 of first system tablespace page
 @return error code or DB_SUCCESS */
-dberr_t recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
+dberr_t recv_recovery_from_checkpoint_start()
 {
 	bool		rescan = false;
 	dberr_t		err = DB_SUCCESS;
@@ -3715,44 +3716,6 @@ read_only_recovery:
 		    || recv_sys.is_corrupt_fs()) {
 			mysql_mutex_unlock(&log_sys.mutex);
 			return DB_ERROR;
-		}
-	}
-
-	if (flush_lsn == log_sys.next_checkpoint_lsn + sizeof_checkpoint
-	    && recv_sys.mlog_checkpoint_lsn == recv_sys.recovered_lsn) {
-		/* The redo log is logically empty. */
-	} else if (log_sys.next_checkpoint_lsn != flush_lsn) {
-		ut_ad(!srv_log_file_created);
-
-		if (log_sys.next_checkpoint_lsn + sizeof_checkpoint
-		    < flush_lsn) {
-			sql_print_warning("InnoDB: Are you sure you are using"
-					  " the right ib_logfile0"
-					  " to start up the database?"
-					  " The checkpoint is " LSN_PF
-					  ", less than the"
-					  " log sequence number " LSN_PF
-					  " in the system tablespace.",
-					  log_sys.next_checkpoint_lsn,
-					  flush_lsn);
-		}
-
-		if (!recv_needed_recovery) {
-			sql_print_information(
-				"InnoDB: The log sequence number " LSN_PF
-				" in the system tablespace does not match"
-				" the log checkpoint " LSN_PF
-				" in ib_logfile0!", flush_lsn,
-				log_sys.next_checkpoint_lsn);
-
-			if (srv_read_only_mode) {
-				mysql_mutex_unlock(&log_sys.mutex);
-				sql_print_error("InnoDB: innodb_read_only"
-						" prevents crash recovery");
-				return DB_READ_ONLY;
-			}
-
-			recv_needed_recovery = true;
 		}
 	}
 
