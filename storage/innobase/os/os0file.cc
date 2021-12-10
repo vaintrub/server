@@ -2245,9 +2245,7 @@ os_file_create_func(
 	}
 
 
-	// TODO: Create a bug, this looks wrong. The flush log
-	// parameter is dynamic.
-	if (type == OS_LOG_FILE && srv_flush_log_at_trx_commit == 2) {
+	if (type == OS_LOG_FILE/* FIXME: MDEV-14425 work-around */) {
 		/* Do not use unbuffered i/o for the log files because
 		value 2 denotes that we do not flush the log at every
 		commit, but only once per second */
@@ -2274,7 +2272,7 @@ os_file_create_func(
 		if ((file != INVALID_HANDLE_VALUE)
 			&& (attributes & FILE_FLAG_NO_BUFFERING)
 			&& (type == OS_LOG_FILE)
-			&& !unbuffered_io_possible(file, OS_FILE_LOG_BLOCK_SIZE)) {
+			&& !unbuffered_io_possible(file, 512)) {
 				ut_a(CloseHandle(file));
 				attributes &= ~FILE_FLAG_NO_BUFFERING;
 				create_flag = OPEN_ALWAYS;
@@ -3843,8 +3841,9 @@ void os_aio_wait_until_no_pending_reads()
 dberr_t os_aio(const IORequest &type, void *buf, os_offset_t offset, size_t n)
 {
 	ut_ad(n > 0);
-	ut_ad((n % OS_FILE_LOG_BLOCK_SIZE) == 0);
-	ut_ad((offset % OS_FILE_LOG_BLOCK_SIZE) == 0);
+	ut_ad(!(n & 511)); /* payload of page_compressed tables */
+	ut_ad((offset % UNIV_ZIP_SIZE_MIN) == 0);
+	ut_ad((reinterpret_cast<size_t>(buf) % UNIV_ZIP_SIZE_MIN) == 0);
 	ut_ad(type.is_read() || type.is_write());
 	ut_ad(type.node);
 	ut_ad(type.node->is_open());
@@ -3895,11 +3894,6 @@ func_exit:
 	cb->m_offset = offset;
 	cb->m_opcode = type.is_read() ? tpool::aio_opcode::AIO_PREAD : tpool::aio_opcode::AIO_PWRITE;
 	new (cb->m_userdata) IORequest{type};
-
-	ut_a(reinterpret_cast<size_t>(cb->m_buffer) % OS_FILE_LOG_BLOCK_SIZE
-	     == 0);
-	ut_a(cb->m_len % OS_FILE_LOG_BLOCK_SIZE == 0);
-	ut_a(cb->m_offset % OS_FILE_LOG_BLOCK_SIZE == 0);
 
 	if (srv_thread_pool->submit_io(cb)) {
 		slots->release(cb);

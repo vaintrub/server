@@ -2824,6 +2824,7 @@ skip:
 	return(FALSE);
 }
 
+#if 0 // FIXME
 /** Copy redo log blocks to the data sink.
 @param start_lsn	buffer start LSN
 @param end_lsn		buffer end LSN
@@ -2876,7 +2877,7 @@ static lsn_t xtrabackup_copy_log(lsn_t start_lsn, lsn_t end_lsn, bool last)
 	}
 
 	store_t store= STORE_NO;
-	if (more_data && recv_sys.parse(0, &store, false)) {
+	if (more_data && recv_sys.parse(0, &store)) {
 		msg("Error: copying the log failed");
 		return(0);
 	}
@@ -2899,9 +2900,9 @@ static lsn_t xtrabackup_copy_log(lsn_t start_lsn, lsn_t end_lsn, bool last)
 			return(0);
 		}
 	}
-
 	return(scanned_lsn);
 }
+#endif
 
 /** Copy redo log until the current end of the log is reached
 @param last	whether we are copying the final part of the log
@@ -2917,18 +2918,15 @@ static bool xtrabackup_copy_logfile(bool last = false)
 	lsn_t	start_lsn;
 	lsn_t	end_lsn;
 
-	recv_sys.parse_start_lsn = log_copy_scanned_lsn;
-	recv_sys.scanned_lsn = log_copy_scanned_lsn;
-
-	start_lsn = ut_uint64_align_down(log_copy_scanned_lsn,
-					 OS_FILE_LOG_BLOCK_SIZE);
+	start_lsn = ut_uint64_align_down(log_copy_scanned_lsn, 512);
 	do {
-		end_lsn = start_lsn + RECV_SCAN_SIZE;
+		end_lsn = start_lsn + recv_sys.MTR_SIZE_MAX;
 
 		if (xtrabackup_throttle && (io_ticket--) < 0) {
 			mysql_cond_wait(&wait_throttle, &log_sys.mutex);
 		}
 
+#if 0 // FIXME
 		lsn_t lsn= start_lsn;
 		for (int retries= 0; retries < 100; retries++) {
 			if (log_sys.log.read_log_seg(&lsn, end_lsn)
@@ -2951,7 +2949,7 @@ static bool xtrabackup_copy_logfile(bool last = false)
 			start_lsn = xtrabackup_copy_log(start_lsn, lsn, last);
 			mysql_mutex_unlock(&recv_sys.mutex);
 		}
-
+#endif
 		if (!start_lsn) {
 			const char *reason = recv_sys.is_corrupt_log()
 				? "corrupt log."
@@ -2963,8 +2961,6 @@ static bool xtrabackup_copy_logfile(bool last = false)
 			return true;
 		}
 	} while (start_lsn == end_lsn);
-
-	ut_ad(start_lsn == log_sys.log.scanned_lsn);
 
 	msg(">> log scanned up to (" LSN_PF ")", start_lsn);
 
@@ -4305,22 +4301,17 @@ static bool xtrabackup_backup_low()
 
 	/* read the latest checkpoint lsn */
 	{
-		ulint	max_cp_field;
-
-		if (recv_find_max_checkpoint(&max_cp_field) == DB_SUCCESS
-		    && log_sys.log.format != 0) {
-			if (max_cp_field == LOG_CHECKPOINT_1) {
-				log_sys.log.read(max_cp_field,
-						 {log_sys.checkpoint_buf,
-						  OS_FILE_LOG_BLOCK_SIZE});
-			}
+		if (recv_sys.find_checkpoint() == DB_SUCCESS
+		    && log_sys.is_latest()) {
+#if 0
 			metadata_to_lsn = mach_read_from_8(
 				log_sys.checkpoint_buf + LOG_CHECKPOINT_LSN);
 			msg("mariabackup: The latest check point"
 			    " (for incremental): '" LSN_PF "'",
 			    metadata_to_lsn);
+#endif
 		} else {
-			msg("Error: recv_find_max_checkpoint() failed.");
+			msg("Error: recv_sys.find_checkpoint() failed.");
 		}
 
 		mysql_cond_broadcast(&log_copying_stop);
@@ -4504,18 +4495,13 @@ fail:
 	}
 
         {
-	/* definition from recv_recovery_from_checkpoint_start() */
-	ulint		max_cp_field;
 
 	/* get current checkpoint_lsn */
 	/* Look for the latest checkpoint from any of the log groups */
 
 	mysql_mutex_lock(&log_sys.mutex);
 
-reread_log_header:
-	dberr_t err = recv_find_max_checkpoint(&max_cp_field);
-
-	if (err != DB_SUCCESS) {
+	if (recv_sys.find_checkpoint() != DB_SUCCESS) {
 		msg("Error: cannot read redo log header");
 unlock_and_fail:
 		mysql_mutex_unlock(&log_sys.mutex);
@@ -4525,23 +4511,13 @@ free_and_fail:
 		goto fail;
 	}
 
-	if (log_sys.log.format == 0) {
-		msg("Error: cannot process redo log before MariaDB 10.2.2");
-		goto unlock_and_fail;
-	}
-
-	byte* buf = log_sys.checkpoint_buf;
-	checkpoint_lsn_start = log_sys.log.get_lsn();
+	checkpoint_lsn_start = log_sys.next_checkpoint_lsn;
 	checkpoint_no_start = log_sys.next_checkpoint_no;
 
-	log_sys.log.read(max_cp_field, {buf, OS_FILE_LOG_BLOCK_SIZE});
-
-	if (checkpoint_no_start != mach_read_from_8(buf + LOG_CHECKPOINT_NO)
-	    || checkpoint_lsn_start
-	    != mach_read_from_8(buf + LOG_CHECKPOINT_LSN)
-	    || log_sys.log.get_lsn_offset()
-	    != mach_read_from_8(buf + LOG_CHECKPOINT_OFFSET))
-		goto reread_log_header;
+	if (!log_sys.is_latest()) {
+		msg("Error: cannot process redo log before MariaDB 10.8");
+		goto unlock_and_fail;
+	}
 
 	mysql_mutex_unlock(&log_sys.mutex);
 
@@ -4562,23 +4538,23 @@ free_and_fail:
 
 	/* label it */
 	byte* log_hdr_buf = static_cast<byte*>(
-		aligned_malloc(LOG_FILE_HDR_SIZE, OS_FILE_LOG_BLOCK_SIZE));
-	memset(log_hdr_buf, 0, LOG_FILE_HDR_SIZE);
+		aligned_malloc(4096, 4096));
+	memset(log_hdr_buf, 4096, 4096);
 
 	byte *log_hdr_field = log_hdr_buf;
 	mach_write_to_4(LOG_HEADER_FORMAT + log_hdr_field, log_sys.log.format);
-	mach_write_to_4(LOG_HEADER_SUBFORMAT + log_hdr_field, log_sys.log.subformat);
 	mach_write_to_8(LOG_HEADER_START_LSN + log_hdr_field, checkpoint_lsn_start);
 	strcpy(reinterpret_cast<char*>(LOG_HEADER_CREATOR + log_hdr_field),
 		"Backup " MYSQL_SERVER_VERSION);
-	log_block_set_checksum(log_hdr_field,
-		log_block_calc_checksum_crc32(log_hdr_field));
+	mach_write_to_4(my_assume_aligned<4>(508 + log_hdr_field),
+			my_crc32c(0, log_hdr_field, 508));
 
+#if 0 // FIXME
 	/* copied from log_group_checkpoint() */
 	log_hdr_field +=
 		(log_sys.next_checkpoint_no & 1) ? LOG_CHECKPOINT_2 : LOG_CHECKPOINT_1;
 	/* The least significant bits of LOG_CHECKPOINT_OFFSET must be
-	stored correctly in the copy of the LOG_FILE_NAME. The most significant
+	stored correctly in the copy of the ib_logfile0. The most significant
 	bits, which identify the start offset of the log block in the file,
 	we did choose freely, as LOG_FILE_HDR_SIZE. */
 	ut_ad(!((log_sys.log.get_lsn() ^ checkpoint_lsn_start)
@@ -4588,16 +4564,15 @@ free_and_fail:
 	mach_write_to_8(log_hdr_field + LOG_CHECKPOINT_OFFSET,
 		(checkpoint_lsn_start & (OS_FILE_LOG_BLOCK_SIZE - 1))
 		| LOG_FILE_HDR_SIZE);
-	log_block_set_checksum(log_hdr_field,
-			log_block_calc_checksum_crc32(log_hdr_field));
-
+	mach_write_to_4(my_assume_aligned<4>(508 + log_hdr_field),
+			my_crc32c(0, log_hdr_field, 508));
 	/* Write log header*/
 	if (ds_write(dst_log_file, log_hdr_buf, LOG_FILE_HDR_SIZE)) {
 		msg("error: write to logfile failed");
 		aligned_free(log_hdr_buf);
 		goto free_and_fail;
 	}
-
+#endif
 	aligned_free(log_hdr_buf);
 	log_copying_running = true;
 	/* start io throttle */
@@ -4610,11 +4585,9 @@ free_and_fail:
 	}
 
 	/* Populate fil_system with tablespaces to copy */
-	err = xb_load_tablespaces();
-	if (err != DB_SUCCESS) {
+	if (dberr_t err = xb_load_tablespaces()) {
 		msg("merror: xb_load_tablespaces() failed with"
 		    " error %s.", ut_strerr(err));
-fail_before_log_copying_thread_start:
 		log_copying_running = false;
 		goto free_and_fail;
 	}
@@ -4629,8 +4602,10 @@ fail_before_log_copying_thread_start:
 
 	mysql_mutex_unlock(&log_sys.mutex);
 
-	if (log_copy_failed)
-		goto fail_before_log_copying_thread_start;
+	if (log_copy_failed) {
+		log_copying_running = false;
+		goto free_and_fail;
+	}
 
 	DBUG_MARIABACKUP_EVENT("before_innodb_log_copy_thread_started", {});
 

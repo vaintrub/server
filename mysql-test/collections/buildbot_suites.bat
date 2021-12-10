@@ -4,7 +4,6 @@ main,^
 innodb,^
 versioning,^
 plugins,^
-mariabackup,^
 roles,^
 auth_gssapi,^
 rocksdb,^

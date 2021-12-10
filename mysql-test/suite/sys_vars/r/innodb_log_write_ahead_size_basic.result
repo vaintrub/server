@@ -54,17 +54,16 @@ Warnings:
 Warning	1292	Truncated incorrect innodb_log_write_ahead_size value: '0'
 SELECT @@global.innodb_log_write_ahead_size;
 @@global.innodb_log_write_ahead_size
-512
+64
 SET global innodb_log_write_ahead_size=-1024;
 Warnings:
 Warning	1292	Truncated incorrect innodb_log_write_ahead_size value: '-1024'
 SELECT @@global.innodb_log_write_ahead_size;
 @@global.innodb_log_write_ahead_size
-512
+64
 SET global innodb_log_write_ahead_size=3000;
 Warnings:
 Warning	1292	Truncated incorrect innodb_log_write_ahead_size value: '3000'
-Warning	1210	innodb_log_write_ahead_size should be set 2^n value and larger than 512.
 Warning	1210	Setting innodb_log_write_ahead_size to 4096
 SELECT @@global.innodb_log_write_ahead_size;
 @@global.innodb_log_write_ahead_size
@@ -80,9 +79,9 @@ Warnings:
 Warning	1292	Truncated incorrect innodb_log_write_ahead_size value: '-7'
 SELECT @@global.innodb_log_write_ahead_size;
 @@global.innodb_log_write_ahead_size
-512
+64
 SELECT * FROM information_schema.global_variables
 WHERE variable_name='innodb_log_write_ahead_size';
 VARIABLE_NAME	VARIABLE_VALUE
-INNODB_LOG_WRITE_AHEAD_SIZE	512
+INNODB_LOG_WRITE_AHEAD_SIZE	64
 SET @@global.innodb_log_write_ahead_size = @start_global_value;

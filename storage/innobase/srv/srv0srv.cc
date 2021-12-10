@@ -164,7 +164,7 @@ ulong		srv_page_size;
 /** log2 of innodb_page_size; @see innodb_init_params() */
 uint32_t	srv_page_size_shift;
 /** innodb_log_write_ahead_size */
-ulong		srv_log_write_ahead_size;
+uint		srv_log_write_ahead_size;
 
 /** innodb_adaptive_flushing; try to flush dirty pages so as to avoid
 IO bursts at the checkpoints. */

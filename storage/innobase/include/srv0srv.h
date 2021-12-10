@@ -296,7 +296,7 @@ extern ulonglong	srv_log_file_size;
 extern ulong	srv_log_buffer_size;
 extern ulong	srv_flush_log_at_trx_commit;
 extern uint	srv_flush_log_at_timeout;
-extern ulong	srv_log_write_ahead_size;
+extern uint	srv_log_write_ahead_size;
 extern my_bool	srv_adaptive_flushing;
 extern my_bool	srv_flush_sync;
 
