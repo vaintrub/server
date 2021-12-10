@@ -849,15 +849,16 @@ SELECT CRC32('01234567'), CRC32('012345678');
 SELECT CRC32('~!@$%^*'),  CRC32('-0.0001');
 SELECT CRC32(99999999999999999999999999999999);
 SELECT CRC32(-99999999999999999999999999999999);
+SELECT CRC32C(NULL), CRC32C(''), CRC32C('MariaDB'), CRC32C('mariadb');
 
 # Test cases for using the function in aggregate functions, group-by, having
 # and order-by clauses
 DROP TABLE IF EXISTS t;
 CREATE TABLE t(a INT, b VARCHAR(2));
 INSERT INTO t VALUES (1,'a'), (2,'qw'), (1,'t'), (3,'t');
-SELECT crc32(SUM(a)) FROM t;
-SELECT crc32(AVG(a)) FROM t GROUP BY b;
-SELECT crc32(MAX(b)) FROM t GROUP BY a;
+SELECT crc32(SUM(a)),crc32c(SUM(a)) FROM t;
+SELECT crc32(AVG(a)),crc32c(AVG(a)) FROM t GROUP BY b;
+SELECT crc32(MAX(b)),crc32c(MAX(b)) FROM t GROUP BY a;
 SELECT a, b, crc32(a) FROM t GROUP BY a,b HAVING crc32(MAX(a))=450215437;
 SELECT a,b,concat(a,b),crc32(concat(a,b)) FROM t ORDER BY crc32(concat(a,b));
 DROP TABLE t;

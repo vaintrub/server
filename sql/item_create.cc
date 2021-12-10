@@ -525,6 +525,19 @@ protected:
 };
 
 
+class Create_func_crc32c : public Create_func_arg1
+{
+public:
+  virtual Item *create_1_arg(THD *thd, Item *arg1);
+
+  static Create_func_crc32c s_singleton;
+
+protected:
+  Create_func_crc32c() {}
+  virtual ~Create_func_crc32c() {}
+};
+
+
 class Create_func_datediff : public Create_func_arg2
 {
 public:
@@ -3123,6 +3136,16 @@ Create_func_crc32::create_1_arg(THD *thd, Item *arg1)
   return new (thd->mem_root) Item_func_crc32(thd, arg1);
 }
 
+
+Create_func_crc32c Create_func_crc32c::s_singleton;
+
+Item*
+Create_func_crc32c::create_1_arg(THD *thd, Item *arg1)
+{
+  return new (thd->mem_root) Item_func_crc32c(thd, arg1);
+}
+
+
 Create_func_datediff Create_func_datediff::s_singleton;
 
 Item*
@@ -5555,6 +5578,7 @@ Native_func_registry func_array[] =
   { { STRING_WITH_LEN("COS") }, BUILDER(Create_func_cos)},
   { { STRING_WITH_LEN("COT") }, BUILDER(Create_func_cot)},
   { { STRING_WITH_LEN("CRC32") }, BUILDER(Create_func_crc32)},
+  { { STRING_WITH_LEN("CRC32C") }, BUILDER(Create_func_crc32c)},
   { { STRING_WITH_LEN("DATEDIFF") }, BUILDER(Create_func_datediff)},
   { { STRING_WITH_LEN("DAYNAME") }, BUILDER(Create_func_dayname)},
   { { STRING_WITH_LEN("DAYOFMONTH") }, BUILDER(Create_func_dayofmonth)},
