@@ -3954,12 +3954,6 @@ static int innodb_init_params()
 			<< srv_page_size_shift);
 	}
 
-	{
-		uint tmp = 64;
-		while (tmp < srv_log_write_ahead_size) tmp <<= 1;
-                srv_log_write_ahead_size = tmp;
-	}
-
 	srv_buf_pool_size = ulint(innobase_buffer_pool_size);
 
 	if (innobase_open_files < 10) {
@@ -18408,23 +18402,6 @@ buffer_pool_load_abort(
 	}
 }
 
-static void innodb_log_write_ahead_size_update(THD *thd,
-                                               st_mysql_sys_var*, void*,
-                                               const void *save)
-{
-  uint val= 64, in_val= *static_cast<const uint*>(save);
-
-  while (val < in_val)
-    val<<= 1;
-
-  if (val != in_val)
-    push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
-                        ER_WRONG_ARGUMENTS,
-                        "Setting innodb_log_write_ahead_size to %u",
-                        val);
-  srv_log_write_ahead_size= val;
-}
-
 /** Update innodb_status_output or innodb_status_output_locks,
 which control InnoDB "status monitor" output to the error log.
 @param[out]	var	current value
@@ -19243,12 +19220,6 @@ static MYSQL_SYSVAR_ULONGLONG(log_file_size, srv_log_file_size,
   "Redo log size in bytes",
   NULL, NULL, 96 << 20, 1U << 20, std::numeric_limits<ulonglong>::max(), 4096);
 
-static MYSQL_SYSVAR_UINT(log_write_ahead_size, srv_log_write_ahead_size,
-  PLUGIN_VAR_RQCMDARG,
-  "Redo log write unit size",
-  NULL, innodb_log_write_ahead_size_update,
-  4096, 64, 16384, 64);
-
 static MYSQL_SYSVAR_UINT(old_blocks_pct, innobase_old_blocks_pct,
   PLUGIN_VAR_RQCMDARG,
   "Percentage of the buffer pool to reserve for 'old' blocks.",
@@ -19725,7 +19696,6 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(page_size),
   MYSQL_SYSVAR(log_buffer_size),
   MYSQL_SYSVAR(log_file_size),
-  MYSQL_SYSVAR(log_write_ahead_size),
   MYSQL_SYSVAR(log_group_home_dir),
   MYSQL_SYSVAR(max_dirty_pages_pct),
   MYSQL_SYSVAR(max_dirty_pages_pct_lwm),

@@ -800,7 +800,7 @@ inline lsn_t log_t::append_prepare(size_t size) noexcept
     set_check_flush_or_checkpoint();
 
   /* Calculate the amount of free space needed. */
-  size= (4 * 4096) - size + srv_log_buffer_size + srv_log_write_ahead_size;
+  size= (4 * 4096) - size + srv_log_buffer_size;
 
   for (ut_d(int count= 50); UNIV_UNLIKELY(buf_free > size); )
   {

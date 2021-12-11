@@ -736,91 +736,46 @@ mutex is released in the function.
 */
 static void log_write()
 {
-	mysql_mutex_assert_owner(&log_sys.mutex);
-	ut_ad(!recv_no_log_write);
+  mysql_mutex_assert_owner(&log_sys.mutex);
+  ut_ad(!recv_no_log_write);
 
-	if (log_sys.buf_free == log_sys.buf_next_to_write) {
-		/* Nothing to write */
-		mysql_mutex_unlock(&log_sys.mutex);
-		return;
-	}
+  if (log_sys.buf_free == log_sys.buf_next_to_write)
+  {
+    /* Nothing to write */
+    mysql_mutex_unlock(&log_sys.mutex);
+    return;
+  }
 
 #if 0 // testing
-	static size_t pad;
-	if (size_t append = pad++ % 200) {
-		log_pad(append);
-	}
+  static size_t pad;
+  if (size_t append= pad++ % 200)
+    log_pad(append);
 #endif
+  const byte *write_buf{log_sys.buf + log_sys.buf_next_to_write};
+  const size_t length{log_sys.buf_free - log_sys.buf_next_to_write};
+  const lsn_t lsn{log_sys.get_lsn()};
 
-	ulint		start_offset;
-	ulint		end_offset;
-	ulint		area_start;
-	ulint		area_end;
+  DBUG_PRINT("ib_log", ("write " LSN_PF " to " LSN_PF,
+                        log_sys.write_lsn, lsn));
 
-	start_offset = log_sys.buf_next_to_write;
-	end_offset = log_sys.buf_free;
+  std::swap(log_sys.buf, log_sys.flush_buf);
+  log_sys.buf_free= 0;
+  log_sys.buf_next_to_write= 0;
+  mysql_mutex_unlock(&log_sys.mutex);
 
-	area_start = start_offset;
-	area_end = end_offset;
+  if (UNIV_UNLIKELY(srv_shutdown_state > SRV_SHUTDOWN_INITIATED))
+    service_manager_extend_timeout(INNODB_EXTEND_TIMEOUT_INTERVAL,
+                                   "InnoDB log write: " LSN_PF,
+                                   log_sys.write_lsn);
 
-	const lsn_t lsn = log_sys.get_lsn();
-	byte *write_buf = log_sys.buf;
-
-	DBUG_PRINT("ib_log", ("write " LSN_PF " to " LSN_PF,
-			      log_sys.write_lsn, lsn));
-
-#if 0 // FIXME
-	log_buffer_switch();
-#else
-	std::swap(log_sys.buf, log_sys.flush_buf);
-	log_sys.buf_free = 0;
-	log_sys.buf_next_to_write = 0;
-#endif
-
-	mysql_mutex_unlock(&log_sys.mutex);
-	/* Calculate pad_size if needed. */
-	size_t pad_size = 0;
-#if 0 // FIXME
-	/* Erase the end of the last log block. */
-	memset(write_buf + end_offset, 0,
-	       -end_offset & (OS_FILE_LOG_BLOCK_SIZE - 1));
-	const auto write_ahead_size = srv_log_write_ahead_size;
-
-	if (write_ahead_size > OS_FILE_LOG_BLOCK_SIZE) {
-		ulint	end_offset_in_unit;
-		lsn_t	end_offset = log_sys.log.calc_lsn_offset(
-			ut_uint64_align_up(lsn, OS_FILE_LOG_BLOCK_SIZE));
-		end_offset_in_unit = (ulint) (end_offset % write_ahead_size);
-
-		if (end_offset_in_unit > 0
-		    && (area_end - area_start) > end_offset_in_unit) {
-			/* The first block in the unit was initialized
-			after the last writing.
-			Needs to be written padded data once. */
-			pad_size = std::min<size_t>(
-				size_t(write_ahead_size) - end_offset_in_unit,
-				srv_log_buffer_size - area_end);
-			::memset(write_buf + area_end, 0, pad_size);
-		}
-	}
-#endif
-
-	if (UNIV_UNLIKELY(srv_shutdown_state > SRV_SHUTDOWN_INITIATED)) {
-		service_manager_extend_timeout(INNODB_EXTEND_TIMEOUT_INTERVAL,
-					       "InnoDB log write: "
-					       LSN_PF, log_sys.write_lsn);
-	}
-
-	/* Do the write to the log file */
-	log_write_buf(write_buf + area_start, area_end - area_start,
-		      log_sys.write_lsn);
-	srv_stats.log_padded.add(pad_size);
-	log_sys.write_lsn = lsn;
-	if (log_sys.log.writes_are_durable()) {
-		log_sys.set_flushed_lsn(lsn);
-		log_flush_notify(lsn);
-	}
-	return;
+  /* Do the write to the log file */
+  log_write_buf(write_buf, length, log_sys.write_lsn);
+  log_sys.write_lsn= lsn;
+  if (log_sys.log.writes_are_durable())
+  {
+    log_sys.set_flushed_lsn(lsn);
+    log_flush_notify(lsn);
+  }
 }
 
 static group_commit_lock write_lock;

@@ -189,7 +189,6 @@ log_num_log_io	recovery	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	
 log_waits	recovery	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of log waits due to small log buffer (innodb_log_waits)
 log_write_requests	recovery	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of log write requests (innodb_log_write_requests)
 log_writes	recovery	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Number of log writes (innodb_log_writes)
-log_padded	recovery	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	status_counter	Bytes of log padded for log write ahead
 compress_pages_compressed	compression	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of pages compressed
 compress_pages_decompressed	compression	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of pages decompressed
 compression_pad_increments	compression	0	NULL	NULL	NULL	0	NULL	NULL	NULL	NULL	NULL	NULL	NULL	0	counter	Number of times padding is incremented to avoid compression failures
