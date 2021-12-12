@@ -7312,8 +7312,9 @@ static bool notify_tabledef_changed(TABLE_LIST *table_list)
   false on Success
   true  otherwise
 */
-bool write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
-                                        bool &partial_alter, bool if_exists)
+static bool
+write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
+                                   bool &partial_alter, bool if_exists)
 {
   if (start_alter_id)
   {
@@ -7361,6 +7362,13 @@ bool write_bin_log_start_alter_rollback(THD *thd, uint64 &start_alter_id,
                             used during different phases.
   @param target_mdl_request Metadata request/lock on the target table name.
   @param alter_ctx          ALTER TABLE runtime context.
+  @param partial_alter      Is set to true to return the fact of the first
+                            "START ALTER" binlogging phase is done.
+  @param[in/out]
+         start_alter_id     Gtid seq_no of START ALTER or zero otherwise;
+                            it may get changed to return to the caller.
+  @param if_exists          True indicates the binary logging of the query
+                            should be done with "if exists" option.
 
   @retval   >=1               Error{ 1= ROLLBACK recieved from master , 2= error
                                     in alter so no ROLLBACK in binlog }
@@ -10580,6 +10588,7 @@ do_continue:;
         goto err_cleanup;
       }
       cleanup_table_after_inplace_alter_keep_files(&altered_table);
+
       goto end_inplace;
     }
     else
@@ -10793,7 +10802,9 @@ do_continue:;
       thd->variables.option_bits&= ~OPTION_BIN_COMMIT_OFF;
       binlog_commit(thd, true);
     }
-    DBUG_ASSERT(!start_alter_id);
+
+    DBUG_ASSERT(!start_alter_id);  // no 2 phase logging for
+    DBUG_ASSERT(!partial_alter);   // temporary table alter
 
     /* We don't replicate alter table statement on temporary tables */
     if (!thd->is_current_stmt_binlog_format_row() &&
@@ -10803,8 +10814,7 @@ do_continue:;
       int tmp_error;
       thd->binlog_xid= thd->query_id;
       ddl_log_update_xid(&ddl_log_state, thd->binlog_xid);
-      tmp_error= write_bin_log_with_if_exists(thd, true, false, log_if_exists,
-                                              partial_alter);
+      tmp_error= write_bin_log_with_if_exists(thd, true, false, log_if_exists);
       thd->binlog_xid= 0;
       if (tmp_error)
         goto err_cleanup;
@@ -11157,9 +11167,6 @@ err_with_mdl:
     remove all references to the altered table from the list of locked
     tables and release the exclusive metadata lock.
   */
-  if (partial_alter || start_alter_id)
-    write_bin_log_start_alter_rollback(thd, start_alter_id, partial_alter,
-                                       if_exists);
   thd->locked_tables_list.unlink_all_closed_tables(thd, NULL, 0);
   if (!table_list->table)
     thd->mdl_context.release_all_locks_for_name(mdl_ticket);

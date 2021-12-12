@@ -1307,7 +1307,7 @@ bool Query_log_event::write()
   if (gtid_flags_extra)
   {
     *start++= Q_GTID_FLAGS3;
-    buf[start++]= gtid_flags_extra;
+    *start++= gtid_flags_extra;
     if (gtid_flags_extra &
         (Gtid_log_event::FL_COMMIT_ALTER_E1 |
          Gtid_log_event::FL_ROLLBACK_ALTER_E1))

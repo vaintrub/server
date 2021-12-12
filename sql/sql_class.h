@@ -2999,8 +2999,8 @@ public:
   bool binlog_table_should_be_logged(const LEX_CSTRING *db);
 
   // Accessors and setters of two-phase loggable ALTER binlog properties
-  uint16 get_binlog_flags_for_alter();
-  void   set_binlog_flags_for_alter(uint16);
+  uchar get_binlog_flags_for_alter();
+  void   set_binlog_flags_for_alter(uchar);
   uint64 get_binlog_start_alter_seq_no();
   void   set_binlog_start_alter_seq_no(uint64);
 #endif /* MYSQL_CLIENT */
@@ -7799,13 +7799,9 @@ public:
     m_thd->set_binlog_start_alter_seq_no(0);
   }
 
-  Write_log_with_flags(THD *thd, uint16 flags, uint64 seq_no= 0) : m_thd(thd)
+  Write_log_with_flags(THD *thd, uchar flags) : m_thd(thd)
   {
     m_thd->set_binlog_flags_for_alter(flags);
-    if (seq_no == 0)
-      seq_no= m_thd->get_binlog_start_alter_seq_no();
-    if (seq_no != 0)
-      m_thd->set_binlog_start_alter_seq_no(seq_no);
   }
 };
 

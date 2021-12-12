@@ -578,8 +578,8 @@ public:
   /* Set if we get an error during commit that must be returned from unlog(). */
   bool delayed_error;
   //Will be reset when gtid is written into binlog
-  uint16 gtid_flags3;
-  uint64 sa_seq_no;
+  uchar  gtid_flags3;
+  decltype (rpl_gtid::seq_no) sa_seq_no;
 private:
 
   binlog_cache_mngr& operator=(const binlog_cache_mngr& info);
@@ -646,9 +646,13 @@ bool write_bin_log_start_alter(THD *thd, bool& partial_alter,
                            Gtid_log_event::FL_COMMIT_ALTER_E1 |
                            Gtid_log_event::FL_ROLLBACK_ALTER_E1)));
 
-    // After logging binlog state stays flagged with SA flags3 an seq_no
+    /*
+      After logging binlog state stays flagged with SA flags3 an seq_no.
+      The state is not reset after write_bin_log() is done which is
+      deferred for the second logging phase.
+    */
     thd->set_binlog_flags_for_alter(Gtid_log_event::FL_START_ALTER_E1);
-    if(write_bin_log_with_if_exists(thd, false, true, if_exists, false))
+    if(write_bin_log_with_if_exists(thd, false, false, if_exists, false))
     {
       DBUG_ASSERT(thd->is_error());
       return true;
@@ -5839,15 +5843,21 @@ binlog_cache_mngr *THD::binlog_setup_trx_data()
 /*
   Two phase logged ALTER getter and setter methods.
 */
-uint16 THD::get_binlog_flags_for_alter()
+uchar THD::get_binlog_flags_for_alter()
 {
   return mysql_bin_log.is_open() ? binlog_setup_trx_data()->gtid_flags3 : 0;
 }
 
-void THD::set_binlog_flags_for_alter(uint16 flags)
+void THD::set_binlog_flags_for_alter(uchar flags)
 {
   if (mysql_bin_log.is_open())
+  {
+    // SA must find the flag set empty
+    DBUG_ASSERT(flags != Gtid_log_event::FL_START_ALTER_E1 ||
+                binlog_setup_trx_data()->gtid_flags3 == 0);
+
     binlog_setup_trx_data()->gtid_flags3= flags;
+  }
 }
 
 uint64 THD::get_binlog_start_alter_seq_no()
