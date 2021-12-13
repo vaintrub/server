@@ -21210,6 +21210,9 @@ void ha_innobase::open_read_view()
 
   trx->isolation_level= innobase_map_isolation_level(thd_iso);
   ut_ad(trx->isolation_level == TRX_ISO_REPEATABLE_READ);
+  ut_ad(!trx_is_started(trx));
+
+  trx_start_if_not_started_xa(trx, false);
 
   trx->read_view.open(m_prebuilt->trx);
 }
