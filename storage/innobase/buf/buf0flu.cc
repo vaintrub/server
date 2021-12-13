@@ -1738,7 +1738,7 @@ static bool log_checkpoint_low(lsn_t oldest_lsn, lsn_t end_lsn)
   dirty pages are flushed to the tablespace files.  At this point,
   because we hold log_sys.mutex, mtr_t::commit() in other threads will
   be blocked, and no pages can be added to the flush lists. */
-  lsn_t flush_lsn= fil_names_clear(oldest_lsn);
+  const lsn_t flush_lsn{fil_names_clear(oldest_lsn)};
   ut_ad(flush_lsn >= end_lsn + SIZE_OF_FILE_CHECKPOINT);
   mysql_mutex_unlock(&log_sys.mutex);
   log_write_up_to(flush_lsn, true);

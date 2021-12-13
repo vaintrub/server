@@ -204,6 +204,8 @@ private:
 public:
   /** @return maximum guaranteed size of a mini-transaction on recovery */
   static constexpr size_t MTR_SIZE_MAX{1U << 20};
+  /** Size of the parsing buffer */
+  static constexpr size_t PARSING_BUF_SIZE{2U << 20};
 
   /** whether we are applying redo log records during crash recovery */
   bool recovery_on;

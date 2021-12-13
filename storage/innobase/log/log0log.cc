@@ -460,6 +460,7 @@ void log_t::file::open_file(std::string path)
   fd= log_file_t(std::move(path));
   if (const dberr_t err= fd.open(srv_read_only_mode))
     ib::fatal() << "open(" << fd.get_path() << ") returned " << err;
+  file_size= os_file_get_size(fd.get_path().c_str()).m_total_size;
 }
 
 /** Update the log block checksum. */
@@ -540,16 +541,6 @@ void log_t::file::close_file()
       ib::fatal() << "close(" << fd.get_path() << ") returned " << err;
   }
   fd.free();                                    // Free path
-}
-
-/** Initialize the redo log. */
-void log_t::file::create()
-{
-  ut_ad(this == &log_sys.log);
-  ut_ad(log_sys.is_initialised());
-
-  format= srv_encrypt_log ? log_t::FORMAT_ENC_10_8 : log_t::FORMAT_10_8;
-  file_size= srv_log_file_size;
 }
 
 /******************************************************//**

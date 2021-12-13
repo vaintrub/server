@@ -1290,9 +1290,6 @@ same_space:
 	}
 }
 
-/** Size of the parsing buffer */
-constexpr size_t RECV_PARSING_BUF_SIZE{2U << 20};
-
 /** Clean up after recv_sys_t::create() */
 void recv_sys_t::close()
 {
@@ -1308,7 +1305,7 @@ void recv_sys_t::close()
 
     if (buf)
     {
-      ut_free_dodump(buf, RECV_PARSING_BUF_SIZE);
+      ut_free_dodump(buf, PARSING_BUF_SIZE);
       buf= nullptr;
     }
 
@@ -1334,7 +1331,7 @@ void recv_sys_t::create()
 	apply_log_recs = false;
 	apply_batch_on = false;
 
-	buf = static_cast<byte*>(ut_malloc_dontdump(RECV_PARSING_BUF_SIZE,
+	buf = static_cast<byte*>(ut_malloc_dontdump(PARSING_BUF_SIZE,
 						    PSI_INSTRUMENT_ME));
 	len = 0;
 	recovered_offset = 0;
@@ -1382,7 +1379,7 @@ void recv_sys_t::debug_free()
 
   recovery_on= false;
   pages.clear();
-  ut_free_dodump(buf, RECV_PARSING_BUF_SIZE);
+  ut_free_dodump(buf, PARSING_BUF_SIZE);
 
   buf= nullptr;
 
@@ -1651,12 +1648,16 @@ static dberr_t recv_log_recover_10_5(lsn_t lsn_offset)
 
 dberr_t recv_sys_t::find_checkpoint()
 {
-  ut_ad(files.empty());
-  for (auto &&path : get_existing_log_files_paths())
+  if (files.empty())
   {
-    recv_sys.files.emplace_back(std::move(path));
-    ut_a(recv_sys.files.back().open(true) == DB_SUCCESS);
+    for (auto &&path : get_existing_log_files_paths())
+    {
+      recv_sys.files.emplace_back(std::move(path));
+      ut_a(recv_sys.files.back().open(true) == DB_SUCCESS);
+    }
   }
+  else
+    ut_ad(srv_operation == SRV_OPERATION_BACKUP);
   const bool correct_sizes{redo_file_sizes_are_correct()};
   log_sys.next_checkpoint_lsn= 0;
   recovered_lsn= 0;
@@ -1674,7 +1675,6 @@ dberr_t recv_sys_t::find_checkpoint()
       return err;
   upgrade:
     /* Mark the redo log for upgrading. */
-    srv_log_file_size= 0;
     log_sys.last_checkpoint_lsn=
       log_sys.write_lsn= log_sys.current_flush_lsn=
       log_sys.next_checkpoint_lsn;
@@ -1705,9 +1705,9 @@ dberr_t recv_sys_t::find_checkpoint()
                     " The redo log was created with %s.", creator);
     return DB_ERROR;
   case log_t::FORMAT_10_8:
-    if (files.size() != 1 || (srv_log_file_size & 4095))
+    if (files.size() != 1)
     {
-      sql_print_error("InnoDB: Expecting only ib_logfile0 of correct size");
+      sql_print_error("InnoDB: Expecting only ib_logfile0");
       return DB_CORRUPTION;
     }
 
@@ -1749,14 +1749,14 @@ dberr_t recv_sys_t::find_checkpoint()
     }
     if (!log_sys.next_checkpoint_lsn)
       goto got_no_checkpoint;
-    if (!strcmp(creator, "mariadb-backup --prepare"))
+    if (!memcmp(creator, "Backup ", 8))
       srv_start_after_restore= true;
     return DB_SUCCESS;
   case log_t::FORMAT_10_5:
   case log_t::FORMAT_10_5 | log_t::FORMAT_ENCRYPTED:
     if (files.size() != 1)
     {
-      sql_print_error("InnoDB: Expecting only ib_logfile0 of correct size");
+      sql_print_error("InnoDB: Expecting only ib_logfile0");
       return DB_CORRUPTION;
     }
     /* fall through */
@@ -2397,7 +2397,7 @@ recv_sys_t::parse_mtr_result recv_sys_t::parse_mtr(store_t store)
             if (lsn == log_sys.next_checkpoint_lsn)
             {
               /* There can be multiple FILE_CHECKPOINT for the same LSN. */
-              if (mlog_checkpoint_lsn)
+              if (mlog_checkpoint_lsn || srv_operation == SRV_OPERATION_BACKUP)
                 continue;
               mlog_checkpoint_lsn= recovered_lsn;
               return GOT_EOF;
@@ -3202,7 +3202,7 @@ static bool recv_scan_log(bool last_phase)
   {
     mysql_mutex_assert_owner(&log_sys.mutex);
 
-    if (size_t size= RECV_PARSING_BUF_SIZE - recv_sys.len)
+    if (size_t size= recv_sys.PARSING_BUF_SIZE - recv_sys.len)
     {
       // FIXME: use log_sys.buf (and srv_log_buffer_size)
 #ifdef UNIV_DEBUG
@@ -3316,9 +3316,9 @@ static bool recv_scan_log(bool last_phase)
       break;
     }
 
-    if (recv_sys.recovered_offset > RECV_PARSING_BUF_SIZE / 4 ||
+    if (recv_sys.recovered_offset > recv_sys.PARSING_BUF_SIZE / 4 ||
         (recv_sys.recovered_offset &&
-         recv_sys.len >= RECV_PARSING_BUF_SIZE - recv_sys.MTR_SIZE_MAX))
+         recv_sys.len >= recv_sys.PARSING_BUF_SIZE - recv_sys.MTR_SIZE_MAX))
     {
       const auto ofs= recv_sys.recovered_offset/* & ~4095*/;
       memmove/*_aligned<4096>*/(recv_sys.buf, recv_sys.buf + ofs,
@@ -3815,11 +3815,14 @@ read_only_recovery:
 
 	if (!srv_read_only_mode && log_sys.is_latest()) {
 		log_sys.write_lsn = log_sys.get_lsn();
-                ut_ad(recv_sys.recovered_lsn == log_sys.write_lsn);
-		log_sys.log.read(log_sys.log.calc_lsn_offset(log_sys.write_lsn)
-				 & ~4095, {log_sys.buf, 4096});
-		log_sys.buf_free = size_t(log_sys.write_lsn) & 4095;
-		log_sys.buf_next_to_write = log_sys.buf_free;
+		ut_ad(recv_sys.recovered_lsn == log_sys.write_lsn);
+		if (log_sys.log.file_size == srv_log_file_size) {
+			log_sys.log.read(
+				log_sys.log.calc_lsn_offset(log_sys.write_lsn)
+				& ~4095, {log_sys.buf, 4096});
+			log_sys.buf_free = size_t(log_sys.write_lsn) & 4095;
+			log_sys.buf_next_to_write = log_sys.buf_free;
+		}
 
 		if (recv_needed_recovery
 		    && srv_operation == SRV_OPERATION_NORMAL) {

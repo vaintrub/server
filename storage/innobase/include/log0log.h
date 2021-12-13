@@ -323,7 +323,8 @@ public:
     lsn_t get_first_lsn() const noexcept { return first_lsn; }
 
     /** Initialize the redo log buffer. */
-    void create();
+    void create(bool encrypted)
+    { format= encrypted ? FORMAT_ENC_10_8 : FORMAT_10_8; }
 
     /** Close the redo log buffer. */
     void close() { close_file(); }

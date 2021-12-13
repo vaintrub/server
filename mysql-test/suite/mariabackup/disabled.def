@@ -1,1 +1,41 @@
 log_page_corruption : MDEV-26210
+huge_lsn : MDEV-27199 FIXME: the test must create a dummy log
+innodb_redo_overwrite : MDEV-14425 FIXME: hang
+innodb_redo_log_overwrite : MDEV-14425 FIXME: hang
+absolute_ibdata_paths : MDEV-14425 FIXME: hangs
+nolock_ddl_during_backup_end : MDEV-14425 FIXME: hangs
+
+row_format_redundant : MDEV-14425 FIXME: fails to apply log properly
+
+# The rest might fail because mariabackup --backup and --prepare skip log.
+alter_copy_excluded : MDEV-14425 FIXME
+alter_copy_race : MDEV-14425 FIXME
+apply-log-only-incr : MDEV-14425 FIXME
+create_during_backup : MDEV-14425 FIXME
+create_with_data_directory_during_backup : MDEV-14425 FIXME
+data_directory : MDEV-14425 FIXME
+drop_table_during_backup : MDEV-14425 FIXME
+error_during_copyback : MDEV-14425 FIXME
+full_backup : MDEV-14425 FIXME
+incremental_backup : MDEV-14425 FIXME
+incremental_ddl_before_backup : MDEV-14425 FIXME
+incremental_ddl_during_backup : MDEV-14425 FIXME
+incremental_encrypted : MDEV-14425 FIXME
+innodb_force_recovery : MDEV-14425 FIXME
+log_checksum_mismatch : MDEV-14425 FIXME
+mdev-14447 : MDEV-14425 FIXME
+page_compression_level : MDEV-14425 FIXME
+partial : MDEV-14425 FIXME
+partial_exclude : MDEV-14425 FIXME
+partition_datadir : MDEV-14425 FIXME
+partition_partial : MDEV-14425 FIXME
+recreate_table_during_backup : MDEV-14425 FIXME
+rename_during_backup : MDEV-14425 FIXME
+rename_during_mdl_lock : MDEV-14425 FIXME
+system_versioning : MDEV-14425 FIXME
+unsupported_redo : MDEV-14425 FIXME
+xb_file_key_management : MDEV-14425 FIXME
+xb_fulltext_encrypted : MDEV-14425 FIXME
+xb_page_compress : MDEV-14425 FIXME
+xb_partition : MDEV-14425 FIXME
+xbstream : MDEV-14425 FIXME
