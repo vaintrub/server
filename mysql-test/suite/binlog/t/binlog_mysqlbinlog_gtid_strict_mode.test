@@ -22,7 +22,7 @@
 #   Test Case 7) A decreasing seq_no before a start-position is ignored
 #   Test Case 8) A decreasing seq_no inside of a --start/--stop position window
 #                is displayed
-#   Test Case 9) Error if --stop-position is not strictly greater than
+#   Test Case 9) Error if --stop-position is not greater than or equal to
 #                --start-position
 #   Test Case 10) Strict mode warnings should be independent of --offset option
 #                 specification

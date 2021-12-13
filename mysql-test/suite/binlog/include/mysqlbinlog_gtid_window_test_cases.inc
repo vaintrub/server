@@ -144,7 +144,10 @@ if ($test3_t2_good_checksum != `CHECKSUM TABLE t2`)
 {
     die $data_inconsistent_err;
 }
-DROP TABLE t1;
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should exclude domain 0 from stop position";
+}
 DROP TABLE t2;
 
 
@@ -275,15 +278,14 @@ DROP TABLE t1;
 --echo # --stop-position values are hit
 --echo # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
 --exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --stop-position=1-3-4 | $MYSQL
-if ($t1_final_checksum != `CHECKSUM TABLE t1`)
-{
-    die $data_inconsistent_err;
-}
 if ($test3_t2_good_checksum != `CHECKSUM TABLE t2`)
 {
     die $data_inconsistent_err;
 }
-DROP TABLE t1;
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should exclude domain 0 from stop position";
+}
 DROP TABLE t2;
 
 --echo #
@@ -399,6 +401,39 @@ DROP TABLE t2;
 
 --echo #
 --echo #   Test Case 18:
+--echo #   If --stop-position is specified, domains which are not present
+--echo # in its list should be excluded from output
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --stop-position=1-3-4 | $MYSQL
+
+if ($test3_t2_good_checksum != `CHECKSUM TABLE t2`)
+{
+    die $data_inconsistent_err;
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should exclude domain 0 from stop position";
+}
+DROP TABLE t2;
+
+--echo #
+--echo #   Test Case 19:
+--echo #   If the start and stop GTIDs in any domain are equal, the domain
+--echo # should not have any output
+--echo # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-2 --stop-position=0-1-2 | MYSQL
+--exec $MYSQL_BINLOG $BINLOG_FILE_PARAM --start-position=0-1-2 --stop-position=0-1-2 | $MYSQL
+
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't1'`)
+{
+    die "t1 should not exist as binlog replay should exclude domain 0 from stop position";
+}
+if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' AND table_name = 't2'`)
+{
+    die "t1 should not exist as binlog replay should exclude domain 0 from stop position";
+}
+
+--echo #
+--echo #   Test Case 20:
 --echo #   Successive binary logs (e.g. logs with previous logs that have been
 --echo # purged) will write events when the --start-position matches their
 --echo # Gtid_list_log_event state
@@ -433,7 +468,7 @@ if (`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'test' 
 DROP TABLE t3;
 
 --echo #
---echo #   Test Case 19:
+--echo #   Test Case 21:
 --echo #   Successive binary logs can be called with --stop-position and
 --echo # without --start-position
 if ($is_remote == 1)

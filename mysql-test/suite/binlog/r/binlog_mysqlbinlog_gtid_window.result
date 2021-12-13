@@ -66,7 +66,6 @@ DROP TABLE t1;
 #   Test Case 3:
 #   Single GTID range with different server_ids
 # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=1-2-0 --stop-position=1-3-4 | MYSQL
-DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 4:
@@ -117,7 +116,6 @@ DROP TABLE t1;
 #   All GTID events from other domains are printed until the
 # --stop-position values are hit
 # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
-DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 12:
@@ -163,13 +161,24 @@ DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 18:
+#   If --stop-position is specified, domains which are not present
+# in its list should be excluded from output
+# MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
+DROP TABLE t2;
+#
+#   Test Case 19:
+#   If the start and stop GTIDs in any domain are equal, the domain
+# should not have any output
+# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-2 --stop-position=0-1-2 | MYSQL
+#
+#   Test Case 20:
 #   Successive binary logs (e.g. logs with previous logs that have been
 # purged) will write events when the --start-position matches their
 # Gtid_list_log_event state
 # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | MYSQL
 DROP TABLE t3;
 #
-#   Test Case 19:
+#   Test Case 21:
 #   Successive binary logs can be called with --stop-position and
 # without --start-position
 # MYSQL_BINLOG BINLOG_FILE_PARAM2 --stop-position=0-1-4 | MYSQL
@@ -259,7 +268,6 @@ DROP TABLE t1;
 #   Test Case 3:
 #   Single GTID range with different server_ids
 # MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=1-2-0 --stop-position=1-3-4 | MYSQL
-DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 4:
@@ -310,7 +318,6 @@ DROP TABLE t1;
 #   All GTID events from other domains are printed until the
 # --stop-position values are hit
 # MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
-DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 12:
@@ -356,6 +363,17 @@ DROP TABLE t1;
 DROP TABLE t2;
 #
 #   Test Case 18:
+#   If --stop-position is specified, domains which are not present
+# in its list should be excluded from output
+# MYSQL_BINLOG BINLOG_FILE_PARAM --stop-position=1-3-4 | MYSQL
+DROP TABLE t2;
+#
+#   Test Case 19:
+#   If the start and stop GTIDs in any domain are equal, the domain
+# should not have any output
+# MYSQL_BINLOG BINLOG_FILE_PARAM --start-position=0-1-2 --stop-position=0-1-2 | MYSQL
+#
+#   Test Case 20:
 #   Successive binary logs (e.g. logs with previous logs that have been
 # purged) will write events when the --start-position matches their
 # Gtid_list_log_event state
@@ -371,7 +389,7 @@ DROP TABLE t3;
 # MYSQL_BINLOG BINLOG_FILE_PARAM2 --start-position=0-1-3,1-2-5 | MYSQL
 DROP TABLE t3;
 #
-#   Test Case 19:
+#   Test Case 21:
 #   Successive binary logs can be called with --stop-position and
 # without --start-position
 #

@@ -520,7 +520,8 @@ public:
   {
     DELEGATING_GTID_FILTER_TYPE = 1,
     WINDOW_GTID_FILTER_TYPE = 2,
-    ACCEPT_ALL_GTID_FILTER_TYPE = 3
+    ACCEPT_ALL_GTID_FILTER_TYPE = 3,
+    REJECT_ALL_GTID_FILTER_TYPE = 4
   };
 
   /*
@@ -562,6 +563,19 @@ public:
   ~Accept_all_gtid_filter() {}
   my_bool exclude(rpl_gtid *gtid) { return FALSE; }
   uint32 get_filter_type() { return ACCEPT_ALL_GTID_FILTER_TYPE; }
+  my_bool has_finished() { return FALSE; }
+};
+
+/*
+  Filter implementation to exclude all tested GTIDs.
+*/
+class Reject_all_gtid_filter : public Gtid_event_filter
+{
+public:
+  Reject_all_gtid_filter() {}
+  ~Reject_all_gtid_filter() {}
+  my_bool exclude(rpl_gtid *gtid) { return TRUE; }
+  uint32 get_filter_type() { return REJECT_ALL_GTID_FILTER_TYPE; }
   my_bool has_finished() { return FALSE; }
 };
 
@@ -755,6 +769,12 @@ public:
   {
     return gtid->domain_id;
   }
+
+  /*
+    Override Id_delegating_gtid_event_filter to extend with domain specific
+    filtering logic
+  */
+  my_bool exclude(rpl_gtid*);
 
   /*
     Validates that window filters with both a start and stop GTID satisfy

@@ -170,14 +170,12 @@ DROP TABLE t1;
 RESET MASTER;
 #
 #   Test Case 9:
-#   Error if --stop-position is not strictly greater than
+#   Error if --stop-position is not greater than or equal to
 # --start-position
 #
 # Note: Error is only displayed in strict mode, -vvv has no effect here
 FLUSH LOGS;
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 --gtid-strict-mode 2> log_error_ > OUT_FILE
-FOUND 1 /ERROR: Queried GTID range is invalid in strict mode/ in out.err
-# MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 --gtid-strict-mode 2> log_error_ > OUT_FILE
 FOUND 1 /ERROR: Queried GTID range is invalid in strict mode/ in out.err
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 --gtid-strict-mode 2> log_error_ > OUT_FILE
 FOUND 1 /ERROR: Queried GTID range is invalid in strict mode/ in out.err
@@ -478,14 +476,12 @@ DROP TABLE t1;
 RESET MASTER;
 #
 #   Test Case 9:
-#   Error if --stop-position is not strictly greater than
+#   Error if --stop-position is not greater than or equal to
 # --start-position
 #
 # Note: Error is only displayed in strict mode, -vvv has no effect here
 FLUSH LOGS;
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 --skip-gtid-strict-mode -vvv 2> log_error_ > OUT_FILE
-NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err
-# MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 --skip-gtid-strict-mode -vvv 2> log_error_ > OUT_FILE
 NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 --skip-gtid-strict-mode -vvv 2> log_error_ > OUT_FILE
 NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err
@@ -785,14 +781,12 @@ DROP TABLE t1;
 RESET MASTER;
 #
 #   Test Case 9:
-#   Error if --stop-position is not strictly greater than
+#   Error if --stop-position is not greater than or equal to
 # --start-position
 #
 # Note: Error is only displayed in strict mode, -vvv has no effect here
 FLUSH LOGS;
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 --skip-gtid-strict-mode 2> log_error_ > OUT_FILE
-NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err
-# MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 --skip-gtid-strict-mode 2> log_error_ > OUT_FILE
 NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err
 # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2,1-2-1 --stop-position=0-1-1,1-2-2 --skip-gtid-strict-mode 2> log_error_ > OUT_FILE
 NOT FOUND /ERROR: Queried GTID range is invalid in strict mode/ in out.err

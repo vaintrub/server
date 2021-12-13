@@ -44,10 +44,14 @@
 #                 first GTID is found
 #   Test Case 17) Start position with --start-datetime=<T> where T occurs
 #                 after the specified GTID results in no events before T
-#   Test Case 18) Successive binary logs (e.g. logs with previous logs that
+#   Test Case 18) If --stop-position is specified, domains which are not present
+#                 in its list should be excluded from output
+#   Test Case 19: If the start and stop GTIDs in any domain are equal, the
+#                 domain should not have any output
+#   Test Case 20) Successive binary logs (e.g. logs with previous logs that
 #                 have been purged) will write events when the --start-position
 #                 matches their Gtid_list_log_event state
-#   Test Case 19) Successive binary logs can be called with --stop-position and
+#   Test Case 21) Successive binary logs can be called with --stop-position and
 #                 without --start-position
 #
 # To validate for data consistency, each test case compares a checksum of

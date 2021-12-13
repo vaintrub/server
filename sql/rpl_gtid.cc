@@ -3343,11 +3343,11 @@ int Window_gtid_event_filter::set_stop_gtid(rpl_gtid *stop)
 
 my_bool Window_gtid_event_filter::is_range_invalid()
 {
-  if (m_has_start && m_has_stop && m_start.seq_no >= m_stop.seq_no)
+  if (m_has_start && m_has_stop && m_start.seq_no > m_stop.seq_no)
   {
     sql_print_error(
         "Queried GTID range is invalid in strict mode. Stop position "
-        "%u-%u-%llu is not strictly greater than start %u-%u-%llu.",
+        "%u-%u-%llu is not greater than or equal to start %u-%u-%llu.",
         PARAM_GTID(m_stop), PARAM_GTID(m_start));
     return TRUE;
   }
@@ -3649,6 +3649,16 @@ int Domain_gtid_event_filter::add_stop_gtid(rpl_gtid *gtid)
       A window with a stop position can be disabled, and is therefore stateful.
     */
     m_num_stateful_filters++;
+
+    /*
+      Default filtering behavior changes with GTID stop positions, where we
+      exclude all domains not present in the stop list
+    */
+    if (m_default_filter->get_filter_type() == ACCEPT_ALL_GTID_FILTER_TYPE)
+    {
+      delete m_default_filter;
+      m_default_filter= new Reject_all_gtid_filter();
+    }
   }
 
   return err;
@@ -3766,5 +3776,42 @@ void Domain_gtid_event_filter::clear_stop_gtids()
     m_num_stateful_filters--;
   }
 
+  /*
+    Stop positions were cleared and we want to be inclusive again of other
+    domains again
+  */
+  if (m_default_filter->get_filter_type() == REJECT_ALL_GTID_FILTER_TYPE)
+  {
+    delete m_default_filter;
+    m_default_filter= new Accept_all_gtid_filter();
+  }
+
   reset_dynamic(&m_stop_filters);
+}
+
+my_bool Domain_gtid_event_filter::exclude(rpl_gtid *gtid)
+{
+  my_bool include_domain= TRUE;
+  /*
+    If GTID stop positions are provided, we limit the domains which are output
+    to only be those specified with stop positions
+  */
+  if (get_num_stop_gtids())
+  {
+    gtid_filter_identifier filter_id= get_id_from_gtid(gtid);
+    gtid_filter_element *filter_element=
+        (gtid_filter_element *) my_hash_search(&m_filters_by_id_hash,
+                                               (const uchar *) &filter_id, 0);
+    if (filter_element)
+    {
+      Gtid_event_filter *filter= filter_element->filter;
+      if (filter->get_filter_type() == WINDOW_GTID_FILTER_TYPE)
+      {
+        Window_gtid_event_filter *wgef= (Window_gtid_event_filter *) filter;
+        include_domain= wgef->has_stop();
+      }
+    }
+  }
+
+  return include_domain && Id_delegating_gtid_event_filter::exclude(gtid);
 }

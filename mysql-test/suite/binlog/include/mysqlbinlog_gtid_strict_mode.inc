@@ -238,7 +238,7 @@ RESET MASTER;
 
 --echo #
 --echo #   Test Case 9:
---echo #   Error if --stop-position is not strictly greater than
+--echo #   Error if --stop-position is not greater than or equal to
 --echo # --start-position
 --echo #
 --echo # Note: Error is only displayed in strict mode, -vvv has no effect here
@@ -246,12 +246,6 @@ FLUSH LOGS;
 --echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
 --error $is_strict_mode
 --exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-2 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
---let SEARCH_PATTERN=ERROR: Queried GTID range is invalid in strict mode
---source include/search_pattern_in_file.inc
-
---echo # MYSQL_BINLOG MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> log_error_ > OUT_FILE
---error $is_strict_mode
---exec $MYSQL_BINLOG $MYSQLD_DATADIR/master-bin.000001 --start-position=0-1-1 --stop-position=0-1-1 $BINLOG_STRICT_MODE_PARAM 2> $log_error_ > $OUT_FILE
 --let SEARCH_PATTERN=ERROR: Queried GTID range is invalid in strict mode
 --source include/search_pattern_in_file.inc
 
